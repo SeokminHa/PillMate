@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React from "react";
@@ -127,12 +128,20 @@ export default function HistoryScreen() {
                 value={`${weekRate}%`}
                 color={Colors.primary}
               />
-              <StatCard
-                icon="calendar"
-                label={t('thisMonth')}
-                value={`${monthRate}%`}
-                color="#8B5CF6"
-              />
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/monthly-calendar");
+                }}
+                style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.8 : 1 }]}
+              >
+                <StatCard
+                  icon="calendar"
+                  label={t('thisMonth')}
+                  value={`${monthRate}%`}
+                  color="#8B5CF6"
+                />
+              </Pressable>
             </View>
 
             <WeeklyChart data={weeklyData} title={t('thisWeek')} />
