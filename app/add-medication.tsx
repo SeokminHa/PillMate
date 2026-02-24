@@ -114,11 +114,18 @@ export default function AddMedicationScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert(t('nameRequired'), t('nameRequiredMsg'));
       return;
     }
     if (timeEntries.length === 0) {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert(t('scheduleRequired'), t('scheduleRequiredMsg'));
+      return;
+    }
+    if (dosageUnit === 'custom' && !customUnitText.trim()) {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(t('unitRequired'), t('unitRequiredMsg'));
       return;
     }
 
@@ -147,8 +154,6 @@ export default function AddMedicationScreen() {
     router.back();
   };
 
-  const isValid = name.trim().length > 0 && timeEntries.length > 0;
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -157,8 +162,9 @@ export default function AddMedicationScreen() {
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
+        indicatorStyle="default"
       >
         <View style={styles.header}>
           <Text style={styles.title}>{isEditing ? t('editMedicationTitle') : t('addMedicationTitle')}</Text>
@@ -415,11 +421,9 @@ export default function AddMedicationScreen() {
       <View style={styles.footer}>
         <Pressable
           onPress={handleSave}
-          disabled={!isValid}
           style={({ pressed }) => [
             styles.saveButton,
-            !isValid && styles.saveButtonDisabled,
-            { opacity: pressed && isValid ? 0.8 : 1 },
+            { opacity: pressed ? 0.8 : 1 },
           ]}
         >
           <Ionicons name="checkmark" size={20} color="#FFF" />
@@ -722,9 +726,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderRadius: 16,
     paddingVertical: 16,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
   },
   saveText: {
     fontFamily: "Inter_600SemiBold",
