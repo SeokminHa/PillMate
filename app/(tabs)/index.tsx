@@ -65,8 +65,9 @@ function ScheduleCard({ item, index }: { item: ScheduleItem; index: number }) {
   };
 
   const displayTime = item.timeEntry?.label || formatTime(item.scheduledTime);
-  const dosageInfo = item.medication.dosageAmount && item.medication.dosageUnit
-    ? `${item.medication.dosageAmount} ${item.medication.dosageUnit}`
+  const unitLabel = item.medication.dosageUnit === 'custom' ? (item.medication.customUnit || '') : t('tablet');
+  const dosageInfo = item.medication.dosageAmount
+    ? `${item.medication.dosageAmount} ${unitLabel}`
     : '';
 
   return (

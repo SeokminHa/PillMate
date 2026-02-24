@@ -37,7 +37,8 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
     );
   };
 
-  const dosageText = item.dosageAmount ? `${item.dosageAmount} ${item.dosageUnit}` : '';
+  const unitLabel = item.dosageUnit === 'custom' ? (item.customUnit || '') : t('tablet');
+  const dosageText = item.dosageAmount ? `${item.dosageAmount} ${unitLabel}` : '';
 
   return (
     <Animated.View entering={Platform.OS !== "web" ? FadeInDown.delay(index * 60).springify() : undefined}>
@@ -49,6 +50,9 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
             {item.timesPerDay}x {t('daily')}
             {dosageText ? ` · ${dosageText}` : ''}
           </Text>
+          {item.memo ? (
+            <Text style={styles.medMemo} numberOfLines={1}>{item.memo}</Text>
+          ) : null}
           <View style={styles.timesRow}>
             {(item.timeEntries || []).map((entry, i) => (
               <View key={i} style={styles.timeBadge}>
@@ -173,6 +177,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  medMemo: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textTertiary,
+    fontStyle: "italic",
     marginTop: 2,
   },
   timesRow: {

@@ -11,16 +11,6 @@ import Colors from "@/constants/colors";
 import { useMedications, MEDICATION_COLORS, TimeEntry, DosageUnit, MealTiming } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const DOSAGE_UNITS: { key: DosageUnit; labelKo: string; labelEn: string }[] = [
-  { key: 'pill', labelKo: '알', labelEn: 'pill' },
-  { key: 'tablet', labelKo: '정', labelEn: 'tablet' },
-  { key: 'capsule', labelKo: '캡슐', labelEn: 'capsule' },
-  { key: 'gram', labelKo: 'g', labelEn: 'g' },
-  { key: 'ml', labelKo: 'ml', labelEn: 'ml' },
-  { key: 'drops', labelKo: '방울', labelEn: 'drops' },
-  { key: 'spoon', labelKo: '스푼', labelEn: 'spoon' },
-];
-
 function formatTimeDisplay(time: string): string {
   const [h, m] = time.split(":");
   const hour = parseInt(h, 10);
@@ -38,33 +28,34 @@ export default function AddMedicationScreen() {
     MEDICATION_COLORS[medications.length % MEDICATION_COLORS.length]
   );
   const [dosageAmount, setDosageAmount] = useState("1");
-  const [dosageUnit, setDosageUnit] = useState<DosageUnit>('pill');
+  const [dosageUnit, setDosageUnit] = useState<DosageUnit>('tablet');
+  const [customUnitText, setCustomUnitText] = useState("");
+  const [memo, setMemo] = useState("");
   const [customHour, setCustomHour] = useState("09");
   const [customMinute, setCustomMinute] = useState("00");
   const [showCustomTime, setShowCustomTime] = useState(false);
-
-  const PRESET_TIMES = [
-    { label: t('morning'), time: "08:00" },
-    { label: t('noon'), time: "12:00" },
-    { label: t('afternoon'), time: "15:00" },
-    { label: t('evening'), time: "19:00" },
-    { label: t('night'), time: "22:00" },
-  ];
-
-  const MEAL_OPTIONS: { meal: string; labelKo: string; labelEn: string; time: string }[] = [
-    { meal: 'breakfast', labelKo: '아침 식사', labelEn: 'Breakfast', time: '07:30' },
-    { meal: 'lunch', labelKo: '점심 식사', labelEn: 'Lunch', time: '12:00' },
-    { meal: 'dinner', labelKo: '저녁 식사', labelEn: 'Dinner', time: '18:30' },
-  ];
-
-  const MEAL_TIMING_OPTIONS: { key: MealTiming; labelKo: string; labelEn: string }[] = [
-    { key: 'before', labelKo: '식전', labelEn: 'Before' },
-    { key: 'during', labelKo: '식중', labelEn: 'During' },
-    { key: 'after', labelKo: '식후', labelEn: 'After' },
-  ];
-
-  const [selectedMeal, setSelectedMeal] = useState<string | null>(null);
   const [selectedMealTiming, setSelectedMealTiming] = useState<MealTiming>('after');
+
+  const QUICK_TIMES: { key: string; labelKey: 'wakeUp' | 'morning' | 'noon' | 'evening' | 'beforeBed' | 'anytime'; time: string; icon: string }[] = [
+    { key: 'wakeup', labelKey: 'wakeUp', time: '06:30', icon: 'sunny-outline' },
+    { key: 'morning', labelKey: 'morning', time: '08:00', icon: 'partly-sunny-outline' },
+    { key: 'noon', labelKey: 'noon', time: '12:00', icon: 'restaurant-outline' },
+    { key: 'evening', labelKey: 'evening', time: '19:00', icon: 'moon-outline' },
+    { key: 'bedtime', labelKey: 'beforeBed', time: '22:00', icon: 'bed-outline' },
+    { key: 'anytime', labelKey: 'anytime', time: '00:00', icon: 'time-outline' },
+  ];
+
+  const MEAL_OPTIONS: { meal: string; labelKey: 'breakfast' | 'lunch' | 'dinner'; time: string }[] = [
+    { meal: 'breakfast', labelKey: 'breakfast', time: '07:30' },
+    { meal: 'lunch', labelKey: 'lunch', time: '12:00' },
+    { meal: 'dinner', labelKey: 'dinner', time: '18:30' },
+  ];
+
+  const MEAL_TIMING_OPTIONS: { key: MealTiming; labelKey: 'beforeMeal' | 'duringMeal' | 'afterMeal' }[] = [
+    { key: 'before', labelKey: 'beforeMeal' },
+    { key: 'during', labelKey: 'duringMeal' },
+    { key: 'after', labelKey: 'afterMeal' },
+  ];
 
   const togglePresetTime = (time: string, label: string) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
@@ -89,8 +80,8 @@ export default function AddMedicationScreen() {
   const addMealTime = (meal: typeof MEAL_OPTIONS[number]) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
-    const mealLabel = language === 'ko' ? meal.labelKo : meal.labelEn;
-    const timingText = language === 'ko' ? (timingLabel?.labelKo || '') : (timingLabel?.labelEn || '');
+    const mealLabel = t(meal.labelKey);
+    const timingText = timingLabel ? t(timingLabel.labelKey) : '';
 
     let adjustedTime = meal.time;
     if (selectedMealTiming === 'before') {
@@ -138,6 +129,8 @@ export default function AddMedicationScreen() {
       timeEntries: sortedEntries,
       dosageAmount,
       dosageUnit,
+      customUnit: dosageUnit === 'custom' ? customUnitText : undefined,
+      memo: memo.trim() || undefined,
       color: selectedColor,
     });
 
@@ -181,7 +174,7 @@ export default function AddMedicationScreen() {
           <Text style={styles.sectionLabel}>{t('dosage')}</Text>
           <View style={styles.dosageRow}>
             <TextInput
-              style={[styles.input, styles.dosageInput]}
+              style={[styles.input, styles.dosageAmountInput]}
               placeholder={t('dosagePlaceholder')}
               placeholderTextColor={Colors.textTertiary}
               value={dosageAmount}
@@ -189,23 +182,54 @@ export default function AddMedicationScreen() {
               keyboardType="numeric"
               returnKeyType="done"
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitScroll} contentContainerStyle={styles.unitScrollContent}>
-              {DOSAGE_UNITS.map(unit => (
-                <Pressable
-                  key={unit.key}
-                  onPress={() => {
-                    if (Platform.OS !== "web") Haptics.selectionAsync();
-                    setDosageUnit(unit.key);
-                  }}
-                  style={[styles.unitChip, dosageUnit === unit.key && styles.unitChipSelected]}
-                >
-                  <Text style={[styles.unitChipText, dosageUnit === unit.key && styles.unitChipTextSelected]}>
-                    {language === 'ko' ? unit.labelKo : unit.labelEn}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                setDosageUnit('tablet');
+              }}
+              style={[styles.unitChip, dosageUnit === 'tablet' && styles.unitChipSelected]}
+            >
+              <Text style={[styles.unitChipText, dosageUnit === 'tablet' && styles.unitChipTextSelected]}>
+                {t('tablet')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                setDosageUnit('custom');
+              }}
+              style={[styles.unitChip, dosageUnit === 'custom' && styles.unitChipSelected]}
+            >
+              <Text style={[styles.unitChipText, dosageUnit === 'custom' && styles.unitChipTextSelected]}>
+                {t('customUnit')}
+              </Text>
+            </Pressable>
           </View>
+          {dosageUnit === 'custom' && (
+            <TextInput
+              style={styles.input}
+              placeholder={t('customUnitPlaceholder')}
+              placeholderTextColor={Colors.textTertiary}
+              value={customUnitText}
+              onChangeText={setCustomUnitText}
+              returnKeyType="done"
+            />
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>{t('memo')}</Text>
+          <TextInput
+            style={[styles.input, styles.memoInput]}
+            placeholder={t('memoPlaceholder')}
+            placeholderTextColor={Colors.textTertiary}
+            value={memo}
+            onChangeText={setMemo}
+            multiline
+            numberOfLines={2}
+            textAlignVertical="top"
+            returnKeyType="default"
+          />
         </View>
 
         <View style={styles.section}>
@@ -235,21 +259,22 @@ export default function AddMedicationScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t('whenToTake')}</Text>
 
-          <Text style={styles.subLabel}>{t('presetTimes')}</Text>
-          <View style={styles.timesGrid}>
-            {PRESET_TIMES.map(preset => {
-              const isSelected = !!timeEntries.find(e => e.time === preset.time && !e.mealTiming);
+          <View style={styles.quickTimesGrid}>
+            {QUICK_TIMES.map(item => {
+              const isSelected = !!timeEntries.find(e => e.time === item.time && !e.mealTiming);
               return (
                 <Pressable
-                  key={preset.time}
-                  onPress={() => togglePresetTime(preset.time, preset.label)}
-                  style={[styles.timeOption, isSelected && styles.timeOptionSelected]}
+                  key={item.key}
+                  onPress={() => togglePresetTime(item.time, t(item.labelKey))}
+                  style={[styles.quickTimeChip, isSelected && styles.quickTimeChipSelected]}
                 >
-                  <Text style={[styles.timeOptionLabel, isSelected && styles.timeOptionLabelSelected]}>
-                    {preset.label}
-                  </Text>
-                  <Text style={[styles.timeOptionTime, isSelected && styles.timeOptionTimeSelected]}>
-                    {formatTimeDisplay(preset.time)}
+                  <Ionicons
+                    name={item.icon as any}
+                    size={16}
+                    color={isSelected ? Colors.primaryDark : Colors.textSecondary}
+                  />
+                  <Text style={[styles.quickTimeText, isSelected && styles.quickTimeTextSelected]}>
+                    {t(item.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -273,7 +298,7 @@ export default function AddMedicationScreen() {
                 style={[styles.mealTimingChip, selectedMealTiming === opt.key && styles.mealTimingChipSelected]}
               >
                 <Text style={[styles.mealTimingText, selectedMealTiming === opt.key && styles.mealTimingTextSelected]}>
-                  {language === 'ko' ? opt.labelKo : opt.labelEn}
+                  {t(opt.labelKey)}
                 </Text>
               </Pressable>
             ))}
@@ -282,22 +307,17 @@ export default function AddMedicationScreen() {
           <View style={styles.mealGrid}>
             {MEAL_OPTIONS.map(meal => {
               const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
-              const mealLabel = language === 'ko' ? meal.labelKo : meal.labelEn;
-              const timingText = language === 'ko' ? (timingLabel?.labelKo || '') : (timingLabel?.labelEn || '');
+              const mealLabel = t(meal.labelKey);
+              const timingText = timingLabel ? t(timingLabel.labelKey) : '';
               const fullLabel = `${mealLabel} ${timingText}`;
               const isSelected = !!timeEntries.find(e => e.label === fullLabel);
               return (
                 <Pressable
                   key={meal.meal}
                   onPress={() => addMealTime(meal)}
-                  style={[styles.mealOption, isSelected && styles.mealOptionSelected]}
+                  style={[styles.mealChip, isSelected && styles.mealChipSelected]}
                 >
-                  <Ionicons
-                    name={meal.meal === 'breakfast' ? 'sunny-outline' : meal.meal === 'lunch' ? 'restaurant-outline' : 'moon-outline'}
-                    size={18}
-                    color={isSelected ? Colors.primaryDark : Colors.textSecondary}
-                  />
-                  <Text style={[styles.mealOptionText, isSelected && styles.mealOptionTextSelected]}>
+                  <Text style={[styles.mealChipText, isSelected && styles.mealChipTextSelected]}>
                     {mealLabel}
                   </Text>
                 </Pressable>
@@ -316,7 +336,7 @@ export default function AddMedicationScreen() {
               onPress={() => setShowCustomTime(true)}
               style={styles.customTimeButton}
             >
-              <Ionicons name="time-outline" size={18} color={Colors.primary} />
+              <Ionicons name="time-outline" size={16} color={Colors.primary} />
               <Text style={styles.customTimeButtonText}>{t('orCustomTime')}</Text>
             </Pressable>
           ) : (
@@ -429,12 +449,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
   },
-  subLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
   input: {
     backgroundColor: Colors.surface,
     borderRadius: 14,
@@ -445,22 +459,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  memoInput: {
+    minHeight: 72,
+    paddingTop: 14,
+  },
   dosageRow: {
-    gap: 10,
-  },
-  dosageInput: {
-    flex: undefined,
-  },
-  unitScroll: {
-    flexGrow: 0,
-  },
-  unitScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
+  dosageAmountInput: {
+    flex: 1,
+    minWidth: 60,
+  },
   unitChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.border,
@@ -499,39 +514,34 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  timesGrid: {
+  quickTimesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
-  timeOption: {
+  quickTimeChip: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
-  timeOptionSelected: {
+  quickTimeChipSelected: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primaryBg,
   },
-  timeOptionLabel: {
+  quickTimeText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 15,
-    color: Colors.text,
-  },
-  timeOptionLabelSelected: {
-    color: Colors.primaryDark,
-    fontFamily: "Inter_600SemiBold",
-  },
-  timeOptionTime: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondary,
   },
-  timeOptionTimeSelected: {
+  quickTimeTextSelected: {
     color: Colors.primaryDark,
+    fontFamily: "Inter_600SemiBold",
   },
   dividerRow: {
     flexDirection: "row",
@@ -547,7 +557,7 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textTertiary,
   },
   mealTimingRow: {
@@ -569,7 +579,7 @@ const styles = StyleSheet.create({
   },
   mealTimingText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondary,
   },
   mealTimingTextSelected: {
@@ -580,8 +590,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  mealOption: {
+  mealChip: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  mealChipSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryBg,
+  },
+  mealChipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  mealChipTextSelected: {
+    color: Colors.primaryDark,
+    fontFamily: "Inter_600SemiBold",
+  },
+  customTimeButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -591,35 +623,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.border,
-  },
-  mealOptionSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primaryBg,
-  },
-  mealOptionText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  mealOptionTextSelected: {
-    color: Colors.primaryDark,
-    fontFamily: "Inter_600SemiBold",
-  },
-  customTimeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
     borderStyle: "dashed",
   },
   customTimeButtonText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.primary,
   },
   customTimeRow: {
@@ -672,13 +680,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: Colors.primaryBg,
-    padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.primary + "30",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   selectedTimeInfo: {
-    flex: 1,
+    gap: 2,
   },
   selectedTimeText: {
     fontFamily: "Inter_500Medium",
@@ -688,12 +695,11 @@ const styles = StyleSheet.create({
   selectedTimeSub: {
     fontFamily: "Inter_400Regular",
     fontSize: 12,
-    color: Colors.textTertiary,
-    marginTop: 1,
+    color: Colors.textSecondary,
   },
   footer: {
-    padding: 20,
-    paddingBottom: Platform.OS === "web" ? 34 : 20,
+    padding: 16,
+    paddingBottom: 32,
     backgroundColor: Colors.background,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
@@ -704,11 +710,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     backgroundColor: Colors.primary,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 16,
+    paddingVertical: 16,
   },
   saveButtonDisabled: {
-    backgroundColor: Colors.textTertiary,
+    opacity: 0.5,
   },
   saveText: {
     fontFamily: "Inter_600SemiBold",

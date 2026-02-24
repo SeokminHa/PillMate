@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, R
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
-export type DosageUnit = 'pill' | 'tablet' | 'capsule' | 'gram' | 'ml' | 'drops' | 'spoon';
+export type DosageUnit = 'tablet' | 'custom';
 
 export type MealTiming = 'before' | 'during' | 'after' | null;
 
@@ -20,6 +20,8 @@ export interface Medication {
   timeEntries: TimeEntry[];
   dosageAmount: string;
   dosageUnit: DosageUnit;
+  customUnit?: string;
+  memo?: string;
   color: string;
   createdAt: string;
 }
@@ -89,12 +91,23 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
       ]);
       if (medsJson) {
         const parsed = JSON.parse(medsJson);
-        const migrated = parsed.map((m: any) => ({
-          ...m,
-          timeEntries: m.timeEntries || m.scheduleTimes.map((t: string) => ({ time: t })),
-          dosageAmount: m.dosageAmount || '1',
-          dosageUnit: m.dosageUnit || 'pill',
-        }));
+        const migrated = parsed.map((m: any) => {
+          let unit = m.dosageUnit || 'tablet';
+          let customUnit = m.customUnit || '';
+          if (['pill', 'capsule'].includes(unit)) unit = 'tablet';
+          if (['gram', 'ml', 'drops', 'spoon'].includes(unit)) {
+            customUnit = unit === 'gram' ? 'g' : unit === 'ml' ? 'ml' : unit === 'drops' ? (m._lang === 'ko' ? '방울' : 'drops') : (m._lang === 'ko' ? '스푼' : 'spoon');
+            unit = 'custom';
+          }
+          return {
+            ...m,
+            timeEntries: m.timeEntries || m.scheduleTimes.map((t: string) => ({ time: t })),
+            dosageAmount: m.dosageAmount || '1',
+            dosageUnit: unit,
+            customUnit,
+            memo: m.memo || '',
+          };
+        });
         setMedications(migrated);
       }
       if (logsJson) setDoseLogs(JSON.parse(logsJson));
