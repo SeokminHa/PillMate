@@ -109,6 +109,8 @@ const translations = {
     fri: "금",
     sat: "토",
     back: "뒤로",
+    photoArchive: "복용 사진",
+    noPhotosYet: "사진이 없어요",
   },
   en: {
     goodMorning: "Good Morning",
@@ -215,6 +217,8 @@ const translations = {
     fri: "Fri",
     sat: "Sat",
     back: "Back",
+    photoArchive: "Dose Photos",
+    noPhotosYet: "No photos yet",
   },
 } as const;
 

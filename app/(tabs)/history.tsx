@@ -8,62 +8,10 @@ import Colors from "@/constants/colors";
 import { useMedications } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
-  return (
-    <View style={styles.statCard}>
-      <View style={[styles.statIconContainer, { backgroundColor: color + "15" }]}>
-        <Ionicons name={icon as any} size={22} color={color} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function WeeklyChart({ data, title }: { data: { day: string; completed: number; total: number }[]; title: string }) {
-  const maxTotal = Math.max(...data.map(d => d.total), 1);
-
-  return (
-    <View style={styles.chartContainer}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.chart}>
-        {data.map((d, i) => {
-          const height = d.total > 0 ? (d.completed / d.total) * 120 : 0;
-          const totalHeight = d.total > 0 ? (d.total / maxTotal) * 120 : 4;
-          const isToday = i === data.length - 1;
-
-          return (
-            <View key={i} style={styles.barContainer}>
-              <View style={styles.barWrapper}>
-                <View style={[styles.barBg, { height: totalHeight }]} />
-                <View
-                  style={[
-                    styles.barFill,
-                    {
-                      height: height,
-                      backgroundColor: d.completed === d.total && d.total > 0
-                        ? Colors.success
-                        : Colors.primary,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>
-                {d.day}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { medications, getCompletionRate, getStreak, getWeeklyData, doseLogs } = useMedications();
+  const { medications, getCompletionRate, getStreak, doseLogs } = useMedications();
   const { t, language, setLanguage } = useLanguage();
-  const weeklyData = getWeeklyData();
   const streak = getStreak();
   const weekRate = getCompletionRate(7);
   const monthRate = getCompletionRate(30);
@@ -116,35 +64,36 @@ export default function HistoryScreen() {
         ) : (
           <>
             <View style={styles.statsRow}>
-              <StatCard
-                icon="flame"
-                label={t('dayStreak')}
-                value={`${streak}`}
-                color={Colors.accent}
-              />
-              <StatCard
-                icon="trending-up"
-                label={t('thisWeekLabel')}
-                value={`${weekRate}%`}
-                color={Colors.primary}
-              />
+              <View style={styles.statCard}>
+                <View style={[styles.statIconContainer, { backgroundColor: Colors.accent + "15" }]}>
+                  <Ionicons name="flame" size={20} color={Colors.accent} />
+                </View>
+                <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{streak}</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>{t('dayStreak')}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <View style={[styles.statIconContainer, { backgroundColor: Colors.primary + "15" }]}>
+                  <Ionicons name="trending-up" size={20} color={Colors.primary} />
+                </View>
+                <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{weekRate}%</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>{t('thisWeekLabel')}</Text>
+              </View>
               <Pressable
                 onPress={() => {
                   if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push("/monthly-calendar");
                 }}
-                style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.8 : 1 }]}
+                style={styles.statCardPressable}
               >
-                <StatCard
-                  icon="calendar"
-                  label={t('thisMonth')}
-                  value={`${monthRate}%`}
-                  color="#8B5CF6"
-                />
+                <View style={styles.statCard}>
+                  <View style={[styles.statIconContainer, { backgroundColor: "#8B5CF6" + "15" }]}>
+                    <Ionicons name="calendar" size={20} color="#8B5CF6" />
+                  </View>
+                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{monthRate}%</Text>
+                  <Text style={styles.statLabel} numberOfLines={1}>{t('thisMonth')}</Text>
+                </View>
               </Pressable>
             </View>
-
-            <WeeklyChart data={weeklyData} title={t('thisWeek')} />
 
             <View style={styles.summaryCard}>
               <Text style={styles.sectionTitle}>{t('summary')}</Text>
@@ -161,11 +110,18 @@ export default function HistoryScreen() {
                   <Text style={styles.summaryValue}>{doseLogs.length}</Text>
                 </View>
                 <View style={styles.divider} />
-                <View style={styles.summaryItem}>
+                <Pressable
+                  onPress={() => {
+                    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/photo-archive");
+                  }}
+                  style={styles.summaryItem}
+                >
                   <Ionicons name="camera" size={18} color={Colors.accent} />
                   <Text style={styles.summaryLabel}>{t('photos')}</Text>
                   <Text style={styles.summaryValue}>{doseLogs.length}</Text>
-                </View>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.textTertiary} />
+                </Pressable>
               </View>
             </View>
           </>
@@ -220,87 +176,46 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   statCard: {
     flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: 16,
-    padding: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
+  statCardPressable: {
+    flex: 1,
+  },
   statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   statValue: {
     fontFamily: "Inter_700Bold",
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.text,
   },
   statLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textSecondary,
     marginTop: 2,
+    textAlign: "center",
   },
   sectionTitle: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 18,
     color: Colors.text,
     marginBottom: 16,
-  },
-  chartContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  chart: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    height: 140,
-  },
-  barContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  barWrapper: {
-    width: 24,
-    height: 120,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  barBg: {
-    width: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.borderLight,
-    position: "absolute",
-    bottom: 0,
-  },
-  barFill: {
-    width: 24,
-    borderRadius: 12,
-    minHeight: 4,
-  },
-  barLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: Colors.textTertiary,
-    marginTop: 8,
-  },
-  barLabelToday: {
-    color: Colors.primary,
-    fontFamily: "Inter_700Bold",
   },
   summaryCard: {
     backgroundColor: Colors.surface,
