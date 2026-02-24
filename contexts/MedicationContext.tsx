@@ -2,11 +2,24 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, R
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
+export type DosageUnit = 'pill' | 'tablet' | 'capsule' | 'gram' | 'ml' | 'drops' | 'spoon';
+
+export type MealTiming = 'before' | 'during' | 'after' | null;
+
+export interface TimeEntry {
+  time: string;
+  label?: string;
+  mealTiming?: MealTiming;
+}
+
 export interface Medication {
   id: string;
   name: string;
   timesPerDay: number;
   scheduleTimes: string[];
+  timeEntries: TimeEntry[];
+  dosageAmount: string;
+  dosageUnit: DosageUnit;
   color: string;
   createdAt: string;
 }
@@ -38,6 +51,7 @@ interface MedicationContextValue {
 export interface ScheduleItem {
   medication: Medication;
   scheduledTime: string;
+  timeEntry?: TimeEntry;
   taken: boolean;
   doseLog?: DoseLog;
 }
@@ -73,7 +87,16 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
         AsyncStorage.getItem(STORAGE_KEYS.medications),
         AsyncStorage.getItem(STORAGE_KEYS.doseLogs),
       ]);
-      if (medsJson) setMedications(JSON.parse(medsJson));
+      if (medsJson) {
+        const parsed = JSON.parse(medsJson);
+        const migrated = parsed.map((m: any) => ({
+          ...m,
+          timeEntries: m.timeEntries || m.scheduleTimes.map((t: string) => ({ time: t })),
+          dosageAmount: m.dosageAmount || '1',
+          dosageUnit: m.dosageUnit || 'pill',
+        }));
+        setMedications(migrated);
+      }
       if (logsJson) setDoseLogs(JSON.parse(logsJson));
     } catch (e) {
       console.error('Failed to load data:', e);
@@ -140,11 +163,12 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const items: ScheduleItem[] = [];
 
     for (const med of medications) {
-      for (const time of med.scheduleTimes) {
-        const log = todayLogs.find(l => l.medicationId === med.id && l.scheduledTime === time);
+      for (const entry of med.timeEntries) {
+        const log = todayLogs.find(l => l.medicationId === med.id && l.scheduledTime === entry.time);
         items.push({
           medication: med,
-          scheduledTime: time,
+          scheduledTime: entry.time,
+          timeEntry: entry,
           taken: !!log,
           doseLog: log,
         });
@@ -203,9 +227,7 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (i === 0 && !allTaken) {
-        continue;
-      }
+      if (i === 0 && !allTaken) continue;
 
       if (allTaken && medications.some(m => dateStr >= getDateString(new Date(m.createdAt)))) {
         streak++;
