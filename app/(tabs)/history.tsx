@@ -95,29 +95,22 @@ export default function HistoryScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.summaryCard}>
-              <Text style={styles.sectionTitle}>{t('summary')}</Text>
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Ionicons name="medkit" size={18} color={Colors.primary} />
-                  <Text style={styles.summaryLabel}>{t('medications')}</Text>
-                  <Text style={styles.summaryValue}>{medications.length}</Text>
-                </View>
-                <View style={styles.divider} />
-                <Pressable
-                  onPress={() => {
-                    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push("/photo-archive");
-                  }}
-                  style={styles.summaryItem}
-                >
-                  <Ionicons name="camera" size={18} color={Colors.accent} />
-                  <Text style={styles.summaryLabel}>{t('photos')}</Text>
-                  <Text style={styles.summaryValue}>{doseLogs.length}</Text>
-                  <Ionicons name="chevron-forward" size={14} color={Colors.textTertiary} />
-                </Pressable>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/photo-archive");
+              }}
+              style={({ pressed }) => [styles.photoCard, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <View style={styles.photoCardLeft}>
+                <Ionicons name="camera" size={20} color={Colors.accent} />
+                <Text style={styles.photoCardLabel}>{t('photos')}</Text>
               </View>
-            </View>
+              <View style={styles.photoCardRight}>
+                <Text style={styles.photoCardValue}>{doseLogs.length}</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
+              </View>
+            </Pressable>
           </>
         )}
       </ScrollView>
@@ -211,36 +204,36 @@ const styles = StyleSheet.create({
     color: Colors.text,
     marginBottom: 16,
   },
-  summaryCard: {
+  photoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
+    paddingHorizontal: 20,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  summaryRow: {
+  photoCardLeft: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
   },
-  summaryItem: {
-    flex: 1,
+  photoCardLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.text,
+  },
+  photoCardRight: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  summaryLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
-  summaryValue: {
+  photoCardValue: {
     fontFamily: "Inter_700Bold",
-    fontSize: 20,
+    fontSize: 18,
     color: Colors.text,
-  },
-  divider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.borderLight,
   },
   emptyState: {
     alignItems: "center",
