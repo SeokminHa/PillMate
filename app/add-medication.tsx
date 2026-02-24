@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   StyleSheet, Text, View, TextInput, Pressable, ScrollView,
-  Platform, Alert, KeyboardAvoidingView,
+  Platform, KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,6 +39,8 @@ export default function AddMedicationScreen() {
   const [customMinute, setCustomMinute] = useState("00");
   const [showCustomTime, setShowCustomTime] = useState(false);
   const [selectedMealTiming, setSelectedMealTiming] = useState<MealTiming>('after');
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const QUICK_TIMES: { key: string; labelKey: 'wakeUp' | 'morning' | 'noon' | 'evening' | 'beforeBed' | 'anytime'; time: string; icon: string }[] = [
     { key: 'wakeup', labelKey: 'wakeUp', time: '06:30', icon: 'sunny-outline' },
@@ -63,6 +65,7 @@ export default function AddMedicationScreen() {
 
   const togglePresetTime = (time: string, label: string) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
+    if (validationError) setValidationError(null);
     const exists = timeEntries.find(e => e.time === time && !e.mealTiming);
     if (exists) {
       setTimeEntries(prev => prev.filter(e => !(e.time === time && !e.mealTiming)));
@@ -115,20 +118,22 @@ export default function AddMedicationScreen() {
   const handleSave = async () => {
     if (!name.trim()) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert(t('nameRequired'), t('nameRequiredMsg'));
+      setValidationError(t('nameRequiredMsg'));
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
       return;
     }
     if (timeEntries.length === 0) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert(t('scheduleRequired'), t('scheduleRequiredMsg'));
+      setValidationError(t('scheduleRequiredMsg'));
       return;
     }
     if (dosageUnit === 'custom' && !customUnitText.trim()) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert(t('unitRequired'), t('unitRequiredMsg'));
+      setValidationError(t('unitRequiredMsg'));
       return;
     }
 
+    setValidationError(null);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const sortedEntries = [...timeEntries].sort((a, b) => a.time.localeCompare(b.time));
@@ -161,6 +166,7 @@ export default function AddMedicationScreen() {
       keyboardVerticalOffset={90}
     >
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
@@ -180,7 +186,7 @@ export default function AddMedicationScreen() {
             placeholder={t('medNamePlaceholder')}
             placeholderTextColor={Colors.textTertiary}
             value={name}
-            onChangeText={setName}
+            onChangeText={(v) => { setName(v); if (validationError) setValidationError(null); }}
             autoFocus
             returnKeyType="done"
           />
@@ -419,6 +425,12 @@ export default function AddMedicationScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
+        {validationError && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+            <Text style={styles.errorText}>{validationError}</Text>
+          </View>
+        )}
         <Pressable
           onPress={handleSave}
           style={({ pressed }) => [
@@ -717,6 +729,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
+    gap: 10,
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  errorText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
+    color: "#DC2626",
+    flex: 1,
   },
   saveButton: {
     flexDirection: "row",
