@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
+import { scheduleMedicationNotifications, cancelMedicationNotifications } from '@/lib/notifications';
 
 export type DosageUnit = 'tablet' | 'custom';
 
@@ -135,6 +136,12 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const updated = [...medications, newMed];
     setMedications(updated);
     await saveMedications(updated);
+    scheduleMedicationNotifications(
+      newMed.id,
+      newMed.name,
+      newMed.scheduleTimes,
+      `${newMed.name} 복용할 시간이에요!`,
+    ).catch(() => {});
   }, [medications]);
 
   const updateMedication = useCallback(async (id: string, updates: Partial<Medication>) => {
@@ -144,6 +151,7 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
   }, [medications]);
 
   const deleteMedication = useCallback(async (id: string) => {
+    cancelMedicationNotifications(id).catch(() => {});
     const updatedMeds = medications.filter(m => m.id !== id);
     const updatedLogs = doseLogs.filter(l => l.medicationId !== id);
     setMedications(updatedMeds);

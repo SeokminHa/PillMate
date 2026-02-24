@@ -9,6 +9,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { MedicationProvider } from "@/contexts/MedicationContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import { requestNotificationPermissions } from "@/lib/notifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,6 +62,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync();
+      requestNotificationPermissions().catch(() => {});
     }
   }, [fontsLoaded]);
 
