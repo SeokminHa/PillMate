@@ -8,6 +8,7 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { MedicationProvider } from "@/contexts/MedicationContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,7 +20,7 @@ function RootLayoutNav() {
         name="add-medication"
         options={{
           presentation: "formSheet",
-          sheetAllowedDetents: [0.85],
+          sheetAllowedDetents: [0.92],
           sheetGrabberVisible: true,
           headerShown: false,
         }}
@@ -56,9 +57,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView>
           <KeyboardProvider>
-            <MedicationProvider>
-              <RootLayoutNav />
-            </MedicationProvider>
+            <LanguageProvider>
+              <MedicationProvider>
+                <RootLayoutNav />
+              </MedicationProvider>
+            </LanguageProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>
