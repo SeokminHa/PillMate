@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useMedications, Medication } from "@/contexts/MedicationContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatTime(time: string): string {
   const [h, m] = time.split(":");
@@ -18,22 +19,25 @@ function formatTime(time: string): string {
 
 function MedicationCard({ item, index }: { item: Medication; index: number }) {
   const { deleteMedication } = useMedications();
+  const { t } = useLanguage();
 
   const handleDelete = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      "Delete Medication",
-      `Are you sure you want to remove "${item.name}"? All dose records will also be deleted.`,
+      t('deleteMedication'),
+      `"${item.name}"${t('deleteConfirm')}`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('cancel'), style: "cancel" },
         {
-          text: "Delete",
+          text: t('delete'),
           style: "destructive",
           onPress: () => deleteMedication(item.id),
         },
       ]
     );
   };
+
+  const dosageText = item.dosageAmount ? `${item.dosageAmount} ${item.dosageUnit}` : '';
 
   return (
     <Animated.View entering={Platform.OS !== "web" ? FadeInDown.delay(index * 60).springify() : undefined}>
@@ -42,12 +46,15 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
         <View style={styles.medInfo}>
           <Text style={styles.medName}>{item.name}</Text>
           <Text style={styles.medSchedule}>
-            {item.timesPerDay}x daily
+            {item.timesPerDay}x {t('daily')}
+            {dosageText ? ` · ${dosageText}` : ''}
           </Text>
           <View style={styles.timesRow}>
-            {item.scheduleTimes.map((t, i) => (
+            {(item.timeEntries || []).map((entry, i) => (
               <View key={i} style={styles.timeBadge}>
-                <Text style={styles.timeBadgeText}>{formatTime(t)}</Text>
+                <Text style={styles.timeBadgeText}>
+                  {entry.label || formatTime(entry.time)}
+                </Text>
               </View>
             ))}
           </View>
@@ -67,13 +74,14 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
 export default function MedicationsScreen() {
   const insets = useSafeAreaInsets();
   const { medications } = useMedications();
+  const { t } = useLanguage();
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Medications</Text>
+        <Text style={styles.title}>{t('myMedications')}</Text>
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -100,10 +108,8 @@ export default function MedicationsScreen() {
             <View style={styles.emptyIconContainer}>
               <Ionicons name="medical-outline" size={56} color={Colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>No medications added</Text>
-            <Text style={styles.emptySubtitle}>
-              Tap the + button to add your first medication
-            </Text>
+            <Text style={styles.emptyTitle}>{t('noMedsAdded')}</Text>
+            <Text style={styles.emptySubtitle}>{t('tapToAdd')}</Text>
           </View>
         )}
       />

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useMedications } from "@/contexts/MedicationContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatTime(time: string): string {
   const [h, m] = time.split(":");
@@ -30,6 +31,7 @@ export default function TakePhotoScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const { logDose } = useMedications();
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -46,7 +48,7 @@ export default function TakePhotoScreen() {
       }
     } catch (e) {
       console.error("Failed to take photo:", e);
-      Alert.alert("Error", "Failed to take photo. Please try again.");
+      Alert.alert(t('error'), t('failedTakePhoto'));
     }
   };
 
@@ -72,7 +74,7 @@ export default function TakePhotoScreen() {
       router.back();
     } catch (e) {
       console.error("Failed to log dose:", e);
-      Alert.alert("Error", "Failed to save. Please try again.");
+      Alert.alert(t('error'), t('failedSave'));
     } finally {
       setIsSaving(false);
     }
@@ -86,7 +88,7 @@ export default function TakePhotoScreen() {
   if (!permission) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <Text style={styles.loadingText}>Loading camera...</Text>
+        <Text style={styles.loadingText}>{t('loadingCamera')}</Text>
       </View>
     );
   }
@@ -104,22 +106,20 @@ export default function TakePhotoScreen() {
           <View style={styles.permissionIcon}>
             <Ionicons name="camera-outline" size={56} color={Colors.textTertiary} />
           </View>
-          <Text style={styles.permissionTitle}>Camera Access Needed</Text>
-          <Text style={styles.permissionText}>
-            To verify your dose, we need access to your camera to take a photo of your medication.
-          </Text>
+          <Text style={styles.permissionTitle}>{t('cameraAccess')}</Text>
+          <Text style={styles.permissionText}>{t('cameraAccessMsg')}</Text>
           <Pressable
             onPress={requestPermission}
             style={({ pressed }) => [styles.permissionButton, { opacity: pressed ? 0.8 : 1 }]}
           >
-            <Text style={styles.permissionButtonText}>Allow Camera Access</Text>
+            <Text style={styles.permissionButtonText}>{t('allowCamera')}</Text>
           </Pressable>
           <Pressable
             onPress={pickFromGallery}
             style={({ pressed }) => [styles.galleryFallback, { opacity: pressed ? 0.8 : 1 }]}
           >
             <Ionicons name="images-outline" size={18} color={Colors.primary} />
-            <Text style={styles.galleryFallbackText}>Or pick from gallery</Text>
+            <Text style={styles.galleryFallbackText}>{t('orPickGallery')}</Text>
           </Pressable>
         </View>
       </View>
@@ -133,7 +133,7 @@ export default function TakePhotoScreen() {
           <Pressable onPress={retakePhoto} hitSlop={12}>
             <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </Pressable>
-          <Text style={styles.previewTitle}>Confirm Dose</Text>
+          <Text style={styles.previewTitle}>{t('confirmDose')}</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -154,7 +154,7 @@ export default function TakePhotoScreen() {
               style={({ pressed }) => [styles.retakeButton, { opacity: pressed ? 0.8 : 1 }]}
             >
               <Ionicons name="camera-reverse" size={20} color={Colors.primary} />
-              <Text style={styles.retakeText}>Retake</Text>
+              <Text style={styles.retakeText}>{t('retake')}</Text>
             </Pressable>
             <Pressable
               onPress={confirmDose}
@@ -166,7 +166,7 @@ export default function TakePhotoScreen() {
             >
               <Ionicons name="checkmark-circle" size={20} color="#FFF" />
               <Text style={styles.confirmText}>
-                {isSaving ? "Saving..." : "Mark as Taken"}
+                {isSaving ? t('saving') : t('markAsTaken')}
               </Text>
             </Pressable>
           </View>
@@ -188,9 +188,7 @@ export default function TakePhotoScreen() {
             </Pressable>
             <View style={styles.cameraHeaderInfo}>
               <Text style={styles.cameraTitle}>{medicationName}</Text>
-              <Text style={styles.cameraSubtitle}>
-                Take a photo of your medication
-              </Text>
+              <Text style={styles.cameraSubtitle}>{t('takePhotoOf')}</Text>
             </View>
             <View style={{ width: 44 }} />
           </View>

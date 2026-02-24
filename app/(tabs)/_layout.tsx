@@ -6,21 +6,23 @@ import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import Colors from "@/constants/colors";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function NativeTabLayout() {
+  const { t } = useLanguage();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Today</Label>
+        <Label>{t('today')}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="medications">
         <Icon sf={{ default: "pills", selected: "pills.fill" }} />
-        <Label>Medications</Label>
+        <Label>{t('medications')}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
-        <Label>History</Label>
+        <Label>{t('history')}</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -31,6 +33,7 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
+  const { t } = useLanguage();
 
   return (
     <Tabs
@@ -65,7 +68,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Today",
+          title: t('today'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today" size={size} color={color} />
           ),
@@ -74,7 +77,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="medications"
         options={{
-          title: "Medications",
+          title: t('medications'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="medkit" size={size} color={color} />
           ),
@@ -83,7 +86,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: "History",
+          title: t('history'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bar-chart" size={size} color={color} />
           ),

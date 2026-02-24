@@ -1,9 +1,11 @@
-import { StyleSheet, Text, View, ScrollView, Platform } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useMedications } from "@/contexts/MedicationContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
   return (
@@ -17,12 +19,12 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
   );
 }
 
-function WeeklyChart({ data }: { data: { day: string; completed: number; total: number }[] }) {
+function WeeklyChart({ data, title }: { data: { day: string; completed: number; total: number }[]; title: string }) {
   const maxTotal = Math.max(...data.map(d => d.total), 1);
 
   return (
     <View style={styles.chartContainer}>
-      <Text style={styles.sectionTitle}>This Week</Text>
+      <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.chart}>
         {data.map((d, i) => {
           const height = d.total > 0 ? (d.completed / d.total) * 120 : 0;
@@ -59,6 +61,7 @@ function WeeklyChart({ data }: { data: { day: string; completed: number; total: 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { medications, getCompletionRate, getStreak, getWeeklyData, doseLogs } = useMedications();
+  const { t, language, setLanguage } = useLanguage();
   const weeklyData = getWeeklyData();
   const streak = getStreak();
   const weekRate = getCompletionRate(7);
@@ -70,7 +73,31 @@ export default function HistoryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>History</Text>
+        <Text style={styles.title}>{t('history')}</Text>
+        <View style={styles.langToggle}>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.selectionAsync();
+              setLanguage('ko');
+            }}
+            style={[styles.langBtn, language === 'ko' && styles.langBtnActive]}
+          >
+            <Text style={[styles.langBtnText, language === 'ko' && styles.langBtnTextActive]}>
+              {t('korean')}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.selectionAsync();
+              setLanguage('en');
+            }}
+            style={[styles.langBtn, language === 'en' && styles.langBtnActive]}
+          >
+            <Text style={[styles.langBtnText, language === 'en' && styles.langBtnTextActive]}>
+              {t('english')}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -82,54 +109,52 @@ export default function HistoryScreen() {
             <View style={styles.emptyIconContainer}>
               <Ionicons name="analytics-outline" size={56} color={Colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>No data yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Add medications and start tracking to see your stats
-            </Text>
+            <Text style={styles.emptyTitle}>{t('noDataYet')}</Text>
+            <Text style={styles.emptySubtitle}>{t('addMedsToSee')}</Text>
           </View>
         ) : (
           <>
             <View style={styles.statsRow}>
               <StatCard
                 icon="flame"
-                label="Day Streak"
+                label={t('dayStreak')}
                 value={`${streak}`}
                 color={Colors.accent}
               />
               <StatCard
                 icon="trending-up"
-                label="This Week"
+                label={t('thisWeekLabel')}
                 value={`${weekRate}%`}
                 color={Colors.primary}
               />
               <StatCard
                 icon="calendar"
-                label="This Month"
+                label={t('thisMonth')}
                 value={`${monthRate}%`}
                 color="#8B5CF6"
               />
             </View>
 
-            <WeeklyChart data={weeklyData} />
+            <WeeklyChart data={weeklyData} title={t('thisWeek')} />
 
             <View style={styles.summaryCard}>
-              <Text style={styles.sectionTitle}>Summary</Text>
+              <Text style={styles.sectionTitle}>{t('summary')}</Text>
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
                   <Ionicons name="medkit" size={18} color={Colors.primary} />
-                  <Text style={styles.summaryLabel}>Medications</Text>
+                  <Text style={styles.summaryLabel}>{t('medications')}</Text>
                   <Text style={styles.summaryValue}>{medications.length}</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.summaryItem}>
                   <Ionicons name="checkmark-done" size={18} color={Colors.success} />
-                  <Text style={styles.summaryLabel}>Total Doses</Text>
+                  <Text style={styles.summaryLabel}>{t('totalDoses')}</Text>
                   <Text style={styles.summaryValue}>{doseLogs.length}</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.summaryItem}>
                   <Ionicons name="camera" size={18} color={Colors.accent} />
-                  <Text style={styles.summaryLabel}>Photos</Text>
+                  <Text style={styles.summaryLabel}>{t('photos')}</Text>
                   <Text style={styles.summaryValue}>{doseLogs.length}</Text>
                 </View>
               </View>
@@ -147,6 +172,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
@@ -154,6 +182,28 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 26,
     color: Colors.text,
+  },
+  langToggle: {
+    flexDirection: "row",
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 10,
+    padding: 3,
+  },
+  langBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  langBtnActive: {
+    backgroundColor: Colors.primary,
+  },
+  langBtnText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  langBtnTextActive: {
+    color: "#FFF",
   },
   scrollContent: {
     paddingHorizontal: 20,

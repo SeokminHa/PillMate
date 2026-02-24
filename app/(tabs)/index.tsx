@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useMedications, ScheduleItem } from "@/contexts/MedicationContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function formatTime(time: string): string {
   const [h, m] = time.split(":");
@@ -19,9 +20,6 @@ function formatTime(time: string): string {
 function ProgressRing({ progress }: { progress: number }) {
   const size = 80;
   const strokeWidth = 6;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
@@ -50,6 +48,7 @@ function ProgressRing({ progress }: { progress: number }) {
 }
 
 function ScheduleCard({ item, index }: { item: ScheduleItem; index: number }) {
+  const { t } = useLanguage();
   const handleTake = () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -65,6 +64,11 @@ function ScheduleCard({ item, index }: { item: ScheduleItem; index: number }) {
     });
   };
 
+  const displayTime = item.timeEntry?.label || formatTime(item.scheduledTime);
+  const dosageInfo = item.medication.dosageAmount && item.medication.dosageUnit
+    ? `${item.medication.dosageAmount} ${item.medication.dosageUnit}`
+    : '';
+
   return (
     <Animated.View entering={Platform.OS !== "web" ? FadeInDown.delay(index * 80).springify() : undefined}>
       <View style={[styles.scheduleCard, item.taken && styles.scheduleCardTaken]}>
@@ -76,13 +80,19 @@ function ScheduleCard({ item, index }: { item: ScheduleItem; index: number }) {
             </Text>
             <View style={styles.timeRow}>
               <Ionicons name="time-outline" size={14} color={Colors.textTertiary} />
-              <Text style={styles.timeText}>{formatTime(item.scheduledTime)}</Text>
+              <Text style={styles.timeText}>{displayTime}</Text>
+              {dosageInfo ? (
+                <>
+                  <Text style={styles.timeDot}>·</Text>
+                  <Text style={styles.timeText}>{dosageInfo}</Text>
+                </>
+              ) : null}
             </View>
           </View>
           {item.taken ? (
             <View style={styles.takenBadge}>
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-              <Text style={styles.takenText}>Done</Text>
+              <Text style={styles.takenText}>{t('done')}</Text>
             </View>
           ) : (
             <Pressable
@@ -103,14 +113,17 @@ function ScheduleCard({ item, index }: { item: ScheduleItem; index: number }) {
 
 export default function TodayScreen() {
   const insets = useSafeAreaInsets();
-  const { medications, getTodaySchedule, isLoading } = useMedications();
+  const { medications, getTodaySchedule } = useMedications();
+  const { t, language } = useLanguage();
   const schedule = getTodaySchedule();
   const taken = schedule.filter(s => s.taken).length;
   const total = schedule.length;
   const progress = total === 0 ? 0 : Math.round((taken / total) * 100);
 
   const now = new Date();
-  const greeting = now.getHours() < 12 ? "Good Morning" : now.getHours() < 18 ? "Good Afternoon" : "Good Evening";
+  const greeting = now.getHours() < 12 ? t('goodMorning') : now.getHours() < 18 ? t('goodAfternoon') : t('goodEvening');
+
+  const dateLocale = language === 'ko' ? 'ko-KR' : 'en-US';
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -120,7 +133,7 @@ export default function TodayScreen() {
         <View>
           <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.dateText}>
-            {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            {now.toLocaleDateString(dateLocale, { weekday: "long", month: "long", day: "numeric" })}
           </Text>
         </View>
       </View>
@@ -135,14 +148,14 @@ export default function TodayScreen() {
           ListHeaderComponent={() => (
             <View style={styles.summaryCard}>
               <View style={styles.summaryInfo}>
-                <Text style={styles.summaryTitle}>Today's Progress</Text>
+                <Text style={styles.summaryTitle}>{t('todayProgress')}</Text>
                 <Text style={styles.summaryCount}>
-                  <Text style={styles.summaryHighlight}>{taken}</Text> / {total} doses taken
+                  <Text style={styles.summaryHighlight}>{taken}</Text> / {total} {t('dosesTaken')}
                 </Text>
                 {progress === 100 && (
                   <View style={styles.completeBadge}>
                     <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                    <Text style={styles.completeText}>All done for today!</Text>
+                    <Text style={styles.completeText}>{t('allDoneToday')}</Text>
                   </View>
                 )}
               </View>
@@ -153,7 +166,7 @@ export default function TodayScreen() {
           ListEmptyComponent={() => (
             <View style={styles.emptySchedule}>
               <Ionicons name="checkmark-done-circle" size={48} color={Colors.textTertiary} />
-              <Text style={styles.emptyText}>No medications scheduled today</Text>
+              <Text style={styles.emptyText}>{t('noScheduleToday')}</Text>
             </View>
           )}
         />
@@ -162,10 +175,8 @@ export default function TodayScreen() {
           <View style={styles.emptyIconContainer}>
             <Ionicons name="medkit-outline" size={56} color={Colors.textTertiary} />
           </View>
-          <Text style={styles.emptyTitle}>No medications yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Add your first medication to start tracking
-          </Text>
+          <Text style={styles.emptyTitle}>{t('noMedsYet')}</Text>
+          <Text style={styles.emptySubtitle}>{t('addFirstMed')}</Text>
           <Pressable
             onPress={() => {
               if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -177,7 +188,7 @@ export default function TodayScreen() {
             ]}
           >
             <Ionicons name="add" size={20} color="#FFF" />
-            <Text style={styles.addFirstText}>Add Medication</Text>
+            <Text style={styles.addFirstText}>{t('addMedication')}</Text>
           </Pressable>
         </View>
       )}
@@ -294,6 +305,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   timeText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textTertiary,
+  },
+  timeDot: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: Colors.textTertiary,
