@@ -17,20 +17,61 @@ function getDateString(date: Date): string {
 
 type DayStatus = 'all' | 'partial' | 'none' | 'future' | 'empty';
 
+function getStatusEmoji(status: DayStatus): string {
+  if (status === 'all') return '😊';
+  if (status === 'partial') return '🔶';
+  if (status === 'none') return '😢';
+  return '';
+}
+
 export default function MonthlyCalendarScreen() {
   const insets = useSafeAreaInsets();
   const { medications, doseLogs } = useMedications();
   const { t, language } = useLanguage();
   const [selectedMedId, setSelectedMedId] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const todayStr = getDateString(now);
 
-  const firstDayOfMonth = new Date(year, month, 1);
-  const lastDayOfMonth = new Date(year, month + 1, 0);
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+
+  const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth();
+
+  const goToPrevMonth = () => {
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+    setSelectedDay(null);
+  };
+
+  const goToNextMonth = () => {
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+    setSelectedDay(null);
+  };
+
+  const goToToday = () => {
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    setViewYear(now.getFullYear());
+    setViewMonth(now.getMonth());
+    setSelectedDay(null);
+  };
+
+  const firstDayOfMonth = new Date(viewYear, viewMonth, 1);
+  const lastDayOfMonth = new Date(viewYear, viewMonth + 1, 0);
   const daysInMonth = lastDayOfMonth.getDate();
   const startDayOfWeek = firstDayOfMonth.getDay();
 
@@ -47,10 +88,9 @@ export default function MonthlyCalendarScreen() {
 
   const calendarData = useMemo(() => {
     const data: { day: number; status: DayStatus }[] = [];
-    const todayStr = getDateString(now);
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month, d);
+      const date = new Date(viewYear, viewMonth, d);
       const dateStr = getDateString(date);
 
       if (dateStr > todayStr) {
@@ -84,7 +124,7 @@ export default function MonthlyCalendarScreen() {
     }
 
     return data;
-  }, [filteredMeds, doseLogs, year, month, daysInMonth]);
+  }, [filteredMeds, doseLogs, viewYear, viewMonth, daysInMonth, todayStr]);
 
   const calendarGrid: ({ day: number; status: DayStatus } | null)[] = [];
   for (let i = 0; i < startDayOfWeek; i++) {
@@ -102,14 +142,62 @@ export default function MonthlyCalendarScreen() {
     rows.push(calendarGrid.slice(i, i + 7));
   }
 
+  const selectedDayDetail = useMemo(() => {
+    if (selectedDay === null || selectedMedId !== null) return null;
+
+    const date = new Date(viewYear, viewMonth, selectedDay);
+    const dateStr = getDateString(date);
+
+    if (dateStr > todayStr) return null;
+
+    return medications.map(med => {
+      const medCreatedDate = getDateString(new Date(med.createdAt));
+      if (dateStr < medCreatedDate) return null;
+
+      const medLogs = doseLogs.filter(
+        l => l.date === dateStr && l.medicationId === med.id
+      );
+      const taken = Math.min(medLogs.length, med.timesPerDay);
+      const total = med.timesPerDay;
+
+      let status: DayStatus;
+      if (taken === total) status = 'all';
+      else if (taken > 0) status = 'partial';
+      else status = 'none';
+
+      return { med, taken, total, status };
+    }).filter(Boolean) as { med: Medication; taken: number; total: number; status: DayStatus }[];
+  }, [selectedDay, selectedMedId, viewYear, viewMonth, medications, doseLogs, todayStr]);
+
+  const handleDayPress = (item: { day: number; status: DayStatus }) => {
+    if (item.status === 'future') return;
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    if (selectedMedId !== null) return;
+    setSelectedDay(prev => prev === item.day ? null : item.day);
+  };
+
   const renderDayCell = (item: { day: number; status: DayStatus } | null) => {
     if (!item) return <View style={styles.dayCell} />;
 
-    const isToday = item.day === now.getDate();
+    const isToday = isCurrentMonth && item.day === now.getDate();
+    const isSelected = selectedDay === item.day && selectedMedId === null;
+    const isTappable = item.status !== 'future' && selectedMedId === null;
 
     return (
-      <View style={[styles.dayCell, isToday && styles.dayCellToday]}>
-        <Text style={[styles.dayNumber, isToday && styles.dayNumberToday]}>
+      <Pressable
+        onPress={() => handleDayPress(item)}
+        disabled={!isTappable}
+        style={[
+          styles.dayCell,
+          isToday && styles.dayCellToday,
+          isSelected && styles.dayCellSelected,
+        ]}
+      >
+        <Text style={[
+          styles.dayNumber,
+          isToday && styles.dayNumberToday,
+          isSelected && styles.dayNumberSelected,
+        ]}>
           {item.day}
         </Text>
         {item.status === 'all' && (
@@ -126,9 +214,18 @@ export default function MonthlyCalendarScreen() {
         {item.status === 'future' && (
           <View style={styles.futureDot} />
         )}
-      </View>
+      </Pressable>
     );
   };
+
+  const selectedDateLabel = useMemo(() => {
+    if (selectedDay === null) return '';
+    const date = new Date(viewYear, viewMonth, selectedDay);
+    return date.toLocaleDateString(
+      language === 'ko' ? 'ko-KR' : 'en-US',
+      { month: 'long', day: 'numeric', weekday: 'short' }
+    );
+  }, [selectedDay, viewYear, viewMonth, language]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -153,6 +250,7 @@ export default function MonthlyCalendarScreen() {
             onPress={() => {
               if (Platform.OS !== "web") Haptics.selectionAsync();
               setSelectedMedId(null);
+              setSelectedDay(null);
             }}
             style={[styles.medChip, !selectedMedId && styles.medChipSelected]}
           >
@@ -167,6 +265,7 @@ export default function MonthlyCalendarScreen() {
               onPress={() => {
                 if (Platform.OS !== "web") Haptics.selectionAsync();
                 setSelectedMedId(med.id);
+                setSelectedDay(null);
               }}
               style={[
                 styles.medChip,
@@ -185,7 +284,27 @@ export default function MonthlyCalendarScreen() {
         </ScrollView>
 
         <View style={styles.calendarCard}>
-          <Text style={styles.monthTitle}>{monthName}</Text>
+          <View style={styles.monthNav}>
+            <Pressable
+              onPress={goToPrevMonth}
+              hitSlop={12}
+              style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="chevron-back" size={22} color={Colors.text} />
+            </Pressable>
+            <Pressable onPress={goToToday} disabled={isCurrentMonth}>
+              <Text style={[styles.monthTitle, !isCurrentMonth && styles.monthTitleTappable]}>
+                {monthName}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={goToNextMonth}
+              hitSlop={12}
+              style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="chevron-forward" size={22} color={Colors.text} />
+            </Pressable>
+          </View>
 
           <View style={styles.weekHeader}>
             {weekDays.map((day, i) => (
@@ -211,6 +330,34 @@ export default function MonthlyCalendarScreen() {
             </View>
           ))}
         </View>
+
+        {selectedDay !== null && selectedMedId === null && selectedDayDetail && (
+          <View style={styles.dayDetailCard}>
+            <Text style={styles.dayDetailTitle}>{selectedDateLabel}</Text>
+            {selectedDayDetail.length === 0 ? (
+              <Text style={styles.dayDetailEmpty}>{t('noDoses')}</Text>
+            ) : (
+              <View style={styles.dayDetailList}>
+                {selectedDayDetail.map(({ med, taken, total, status }) => (
+                  <View key={med.id} style={styles.dayDetailRow}>
+                    <View style={styles.dayDetailLeft}>
+                      <Text style={styles.dayDetailEmoji}>{getStatusEmoji(status)}</Text>
+                      <View style={[styles.dayDetailDot, { backgroundColor: med.color }]} />
+                      <Text style={styles.dayDetailMedName} numberOfLines={1}>{med.name}</Text>
+                    </View>
+                    <Text style={[
+                      styles.dayDetailCount,
+                      status === 'all' && styles.dayDetailCountAll,
+                      status === 'none' && styles.dayDetailCountNone,
+                    ]}>
+                      {taken}{t('of')}{total}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.legend}>
           <View style={styles.legendItem}>
@@ -300,12 +447,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  navBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   monthTitle: {
     fontFamily: "Inter_700Bold",
     fontSize: 18,
     color: Colors.text,
     textAlign: "center",
-    marginBottom: 16,
+  },
+  monthTitleTappable: {
+    color: Colors.primary,
+    textDecorationLine: "underline",
   },
   weekHeader: {
     flexDirection: "row",
@@ -337,10 +502,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     minHeight: 52,
     gap: 2,
+    borderRadius: 12,
   },
   dayCellToday: {
     backgroundColor: Colors.primaryBg,
-    borderRadius: 12,
+  },
+  dayCellSelected: {
+    backgroundColor: "#E0E7FF",
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   dayNumber: {
     fontFamily: "Inter_500Medium",
@@ -348,6 +518,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   dayNumberToday: {
+    fontFamily: "Inter_700Bold",
+    color: Colors.primary,
+  },
+  dayNumberSelected: {
     fontFamily: "Inter_700Bold",
     color: Colors.primary,
   },
@@ -366,6 +540,69 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: Colors.borderLight,
     marginTop: 2,
+  },
+  dayDetailCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    gap: 12,
+  },
+  dayDetailTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: Colors.text,
+  },
+  dayDetailEmpty: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textTertiary,
+    textAlign: "center",
+    paddingVertical: 12,
+  },
+  dayDetailList: {
+    gap: 10,
+  },
+  dayDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 12,
+    padding: 12,
+    paddingHorizontal: 14,
+  },
+  dayDetailLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  dayDetailEmoji: {
+    fontSize: 18,
+  },
+  dayDetailDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  dayDetailMedName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.text,
+    flex: 1,
+  },
+  dayDetailCount: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  dayDetailCountAll: {
+    color: Colors.success,
+  },
+  dayDetailCountNone: {
+    color: Colors.danger,
   },
   legend: {
     flexDirection: "row",
