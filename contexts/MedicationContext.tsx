@@ -49,6 +49,7 @@ interface MedicationContextValue {
   getCompletionRate: (days: number) => number;
   getStreak: () => number;
   getWeeklyData: () => { day: string; completed: number; total: number }[];
+  reorderMedications: (fromIndex: number, toIndex: number) => Promise<void>;
 }
 
 export interface ScheduleItem {
@@ -296,6 +297,14 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     return data;
   }, [medications, doseLogs]);
 
+  const reorderMedications = useCallback(async (fromIndex: number, toIndex: number) => {
+    const updated = [...medications];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setMedications(updated);
+    await saveMedications(updated);
+  }, [medications]);
+
   const value = useMemo(() => ({
     medications,
     doseLogs,
@@ -309,7 +318,8 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     getCompletionRate,
     getStreak,
     getWeeklyData,
-  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication, logDose, getTodayLogs, getTodaySchedule, getCompletionRate, getStreak, getWeeklyData]);
+    reorderMedications,
+  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication, logDose, getTodayLogs, getTodaySchedule, getCompletionRate, getStreak, getWeeklyData, reorderMedications]);
 
   return (
     <MedicationContext.Provider value={value}>

@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import React from "react";
+import React, { useState } from "react";
 import Colors from "@/constants/colors";
 import { useMedications, Medication } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -17,7 +17,14 @@ function formatTime(time: string): string {
   return `${displayHour}:${m} ${ampm}`;
 }
 
-function MedicationCard({ item, index }: { item: Medication; index: number }) {
+function MedicationCard({ item, index, isReordering, totalCount, onMoveUp, onMoveDown }: {
+  item: Medication;
+  index: number;
+  isReordering: boolean;
+  totalCount: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
   const { deleteMedication } = useMedications();
   const { t } = useLanguage();
 
@@ -41,46 +48,79 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
   const dosageText = item.dosageAmount ? `${item.dosageAmount} ${unitLabel}` : '';
 
   const handleEdit = () => {
+    if (isReordering) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({ pathname: "/add-medication", params: { editId: item.id } });
   };
 
   return (
-    <Animated.View entering={Platform.OS !== "web" ? FadeInDown.delay(index * 60).springify() : undefined}>
+    <Animated.View entering={Platform.OS !== "web" && !isReordering ? FadeInDown.delay(index * 60).springify() : undefined}>
       <Pressable
         onPress={handleEdit}
-        style={({ pressed }) => [styles.medCard, { opacity: pressed ? 0.85 : 1 }]}
+        style={({ pressed }) => [styles.medCard, { opacity: !isReordering && pressed ? 0.85 : 1 }]}
       >
-        <View style={[styles.medColorDot, { backgroundColor: item.color }]} />
+        {isReordering ? (
+          <View style={styles.reorderControls}>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                onMoveUp();
+              }}
+              disabled={index === 0}
+              style={({ pressed }) => [styles.reorderBtn, { opacity: index === 0 ? 0.3 : pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="chevron-up" size={20} color={Colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                onMoveDown();
+              }}
+              disabled={index === totalCount - 1}
+              style={({ pressed }) => [styles.reorderBtn, { opacity: index === totalCount - 1 ? 0.3 : pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="chevron-down" size={20} color={Colors.primary} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.medColorDot, { backgroundColor: item.color }]} />
+        )}
         <View style={styles.medInfo}>
           <Text style={styles.medName}>{item.name}</Text>
           <Text style={styles.medSchedule}>
             {item.timesPerDay}x {t('daily')}
             {dosageText ? ` · ${dosageText}` : ''}
           </Text>
-          {item.memo ? (
+          {!isReordering && item.memo ? (
             <Text style={styles.medMemo} numberOfLines={1}>{item.memo}</Text>
           ) : null}
-          <View style={styles.timesRow}>
-            {(item.timeEntries || []).map((entry, i) => (
-              <View key={i} style={styles.timeBadge}>
-                <Text style={styles.timeBadgeText}>
-                  {entry.label || formatTime(entry.time)}
-                </Text>
-              </View>
-            ))}
+          {!isReordering && (
+            <View style={styles.timesRow}>
+              {(item.timeEntries || []).map((entry, i) => (
+                <View key={i} style={styles.timeBadge}>
+                  <Text style={styles.timeBadgeText}>
+                    {entry.label || formatTime(entry.time)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+        {!isReordering && (
+          <View style={styles.medActions}>
+            <Pressable
+              onPress={handleDelete}
+              hitSlop={12}
+              style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+            >
+              <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+            </Pressable>
+            <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
           </View>
-        </View>
-        <View style={styles.medActions}>
-          <Pressable
-            onPress={handleDelete}
-            hitSlop={12}
-            style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
-          >
-            <Ionicons name="trash-outline" size={20} color={Colors.danger} />
-          </Pressable>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
-        </View>
+        )}
+        {isReordering && (
+          <View style={[styles.medColorDot, { backgroundColor: item.color }]} />
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -88,8 +128,9 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
 
 export default function MedicationsScreen() {
   const insets = useSafeAreaInsets();
-  const { medications } = useMedications();
+  const { medications, reorderMedications } = useMedications();
   const { t } = useLanguage();
+  const [isReordering, setIsReordering] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -97,18 +138,41 @@ export default function MedicationsScreen() {
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('myMedications')}</Text>
-        <Pressable
-          onPress={() => {
-            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/add-medication");
-          }}
-          style={({ pressed }) => [
-            styles.addButton,
-            { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] },
-          ]}
-        >
-          <Ionicons name="add" size={24} color="#FFF" />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          {medications.length > 1 && (
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsReordering(!isReordering);
+              }}
+              style={({ pressed }) => [
+                styles.reorderButton,
+                isReordering && styles.reorderButtonActive,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <Ionicons
+                name={isReordering ? "checkmark" : "reorder-three-outline"}
+                size={22}
+                color={isReordering ? "#FFF" : Colors.primary}
+              />
+            </Pressable>
+          )}
+          {!isReordering && (
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/add-medication");
+              }}
+              style={({ pressed }) => [
+                styles.addButton,
+                { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] },
+              ]}
+            >
+              <Ionicons name="add" size={24} color="#FFF" />
+            </Pressable>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -117,7 +181,16 @@ export default function MedicationsScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 90 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!!medications.length}
-        renderItem={({ item, index }) => <MedicationCard item={item} index={index} />}
+        renderItem={({ item, index }) => (
+          <MedicationCard
+            item={item}
+            index={index}
+            isReordering={isReordering}
+            totalCount={medications.length}
+            onMoveUp={() => reorderMedications(index, index - 1)}
+            onMoveDown={() => reorderMedications(index, index + 1)}
+          />
+        )}
         ListEmptyComponent={() => (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
@@ -144,6 +217,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   title: {
     fontFamily: "Inter_700Bold",
     fontSize: 26,
@@ -156,6 +234,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: "center",
     justifyContent: "center",
+  },
+  reorderButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primaryBg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  reorderButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   listContent: {
     paddingHorizontal: 20,
@@ -179,6 +271,13 @@ const styles = StyleSheet.create({
   medActions: {
     alignItems: "center",
     gap: 8,
+  },
+  reorderControls: {
+    marginRight: 10,
+    gap: 2,
+  },
+  reorderBtn: {
+    padding: 2,
   },
   medInfo: {
     flex: 1,
