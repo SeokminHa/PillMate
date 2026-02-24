@@ -148,6 +148,15 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const updated = medications.map(m => m.id === id ? { ...m, ...updates } : m);
     setMedications(updated);
     await saveMedications(updated);
+    const updatedMed = updated.find(m => m.id === id);
+    if (updatedMed) {
+      scheduleMedicationNotifications(
+        updatedMed.id,
+        updatedMed.name,
+        updatedMed.scheduleTimes,
+        `${updatedMed.name} 복용할 시간이에요!`,
+      ).catch(() => {});
+    }
   }, [medications]);
 
   const deleteMedication = useCallback(async (id: string) => {

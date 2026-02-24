@@ -40,9 +40,17 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
   const unitLabel = item.dosageUnit === 'custom' ? (item.customUnit || '') : t('tablet');
   const dosageText = item.dosageAmount ? `${item.dosageAmount} ${unitLabel}` : '';
 
+  const handleEdit = () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({ pathname: "/add-medication", params: { editId: item.id } });
+  };
+
   return (
     <Animated.View entering={Platform.OS !== "web" ? FadeInDown.delay(index * 60).springify() : undefined}>
-      <View style={styles.medCard}>
+      <Pressable
+        onPress={handleEdit}
+        style={({ pressed }) => [styles.medCard, { opacity: pressed ? 0.85 : 1 }]}
+      >
         <View style={[styles.medColorDot, { backgroundColor: item.color }]} />
         <View style={styles.medInfo}>
           <Text style={styles.medName}>{item.name}</Text>
@@ -63,14 +71,17 @@ function MedicationCard({ item, index }: { item: Medication; index: number }) {
             ))}
           </View>
         </View>
-        <Pressable
-          onPress={handleDelete}
-          hitSlop={12}
-          style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
-        >
-          <Ionicons name="trash-outline" size={20} color={Colors.danger} />
-        </Pressable>
-      </View>
+        <View style={styles.medActions}>
+          <Pressable
+            onPress={handleDelete}
+            hitSlop={12}
+            style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+          >
+            <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+          </Pressable>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
+        </View>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -164,6 +175,10 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     marginRight: 14,
+  },
+  medActions: {
+    alignItems: "center",
+    gap: 8,
   },
   medInfo: {
     flex: 1,

@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, View, TextInput, Pressable, ScrollView,
   Platform, Alert, KeyboardAvoidingView,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React from "react";
@@ -20,17 +20,21 @@ function formatTimeDisplay(time: string): string {
 }
 
 export default function AddMedicationScreen() {
-  const { addMedication, medications } = useMedications();
+  const { addMedication, updateMedication, medications } = useMedications();
   const { t, language } = useLanguage();
-  const [name, setName] = useState("");
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const params = useLocalSearchParams<{ editId?: string }>();
+  const editingMed = params.editId ? medications.find(m => m.id === params.editId) : undefined;
+  const isEditing = !!editingMed;
+
+  const [name, setName] = useState(editingMed?.name || "");
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(editingMed?.timeEntries || []);
   const [selectedColor, setSelectedColor] = useState(
-    MEDICATION_COLORS[medications.length % MEDICATION_COLORS.length]
+    editingMed?.color || MEDICATION_COLORS[medications.length % MEDICATION_COLORS.length]
   );
-  const [dosageAmount, setDosageAmount] = useState("1");
-  const [dosageUnit, setDosageUnit] = useState<DosageUnit>('tablet');
-  const [customUnitText, setCustomUnitText] = useState("");
-  const [memo, setMemo] = useState("");
+  const [dosageAmount, setDosageAmount] = useState(editingMed?.dosageAmount || "1");
+  const [dosageUnit, setDosageUnit] = useState<DosageUnit>(editingMed?.dosageUnit || 'tablet');
+  const [customUnitText, setCustomUnitText] = useState(editingMed?.customUnit || "");
+  const [memo, setMemo] = useState(editingMed?.memo || "");
   const [customHour, setCustomHour] = useState("09");
   const [customMinute, setCustomMinute] = useState("00");
   const [showCustomTime, setShowCustomTime] = useState(false);
@@ -122,7 +126,7 @@ export default function AddMedicationScreen() {
 
     const sortedEntries = [...timeEntries].sort((a, b) => a.time.localeCompare(b.time));
 
-    await addMedication({
+    const medData = {
       name: name.trim(),
       timesPerDay: sortedEntries.length,
       scheduleTimes: sortedEntries.map(e => e.time),
@@ -132,7 +136,13 @@ export default function AddMedicationScreen() {
       customUnit: dosageUnit === 'custom' ? customUnitText : undefined,
       memo: memo.trim() || undefined,
       color: selectedColor,
-    });
+    };
+
+    if (isEditing && editingMed) {
+      await updateMedication(editingMed.id, medData);
+    } else {
+      await addMedication(medData);
+    }
 
     router.back();
   };
@@ -151,7 +161,7 @@ export default function AddMedicationScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{t('addMedicationTitle')}</Text>
+          <Text style={styles.title}>{isEditing ? t('editMedicationTitle') : t('addMedicationTitle')}</Text>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="close" size={24} color={Colors.textSecondary} />
           </Pressable>
@@ -413,7 +423,7 @@ export default function AddMedicationScreen() {
           ]}
         >
           <Ionicons name="checkmark" size={20} color="#FFF" />
-          <Text style={styles.saveText}>{t('saveMedication')}</Text>
+          <Text style={styles.saveText}>{isEditing ? t('updateMedication') : t('saveMedication')}</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
