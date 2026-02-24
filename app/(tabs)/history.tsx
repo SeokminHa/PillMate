@@ -104,12 +104,6 @@ export default function HistoryScreen() {
                   <Text style={styles.summaryValue}>{medications.length}</Text>
                 </View>
                 <View style={styles.divider} />
-                <View style={styles.summaryItem}>
-                  <Ionicons name="checkmark-done" size={18} color={Colors.success} />
-                  <Text style={styles.summaryLabel}>{t('totalDoses')}</Text>
-                  <Text style={styles.summaryValue}>{doseLogs.length}</Text>
-                </View>
-                <View style={styles.divider} />
                 <Pressable
                   onPress={() => {
                     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
