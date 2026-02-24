@@ -13,33 +13,43 @@ function buildMfdsUrl(endpoint: string, serviceKey: string, params: Record<strin
 }
 
 async function fetchMfds(endpoint: string, params: Record<string, string>) {
-  const serviceKey = process.env.MFDS_API_KEY;
-  if (!serviceKey) {
+  const rawKey = process.env.MFDS_API_KEY;
+  if (!rawKey) {
     throw new Error("MFDS_API_KEY is not configured");
   }
 
-  const urlRaw = buildMfdsUrl(endpoint, serviceKey, params);
-  let res = await fetch(urlRaw);
+  const serviceKey = rawKey.trim();
+  const hasPercent = serviceKey.includes("%");
+  const hasPlus = serviceKey.includes("+");
+  const hasSlash = serviceKey.includes("/");
+  const hasEqual = serviceKey.includes("=");
+  console.log(`MFDS key: len=${serviceKey.length}, has%=${hasPercent}, has+=${hasPlus}, has/=${hasSlash}, has==${hasEqual}, first4=${serviceKey.slice(0, 4)}, last4=${serviceKey.slice(-4)}`);
 
-  if (res.status === 401) {
-    const urlEncoded = buildMfdsUrl(endpoint, encodeURIComponent(serviceKey), params);
-    res = await fetch(urlEncoded);
+  const attempts: Array<{ label: string; key: string }> = [];
+
+  if (hasPercent) {
+    attempts.push({ label: "raw(already-encoded)", key: serviceKey });
+    try {
+      const dec = decodeURIComponent(serviceKey);
+      attempts.push({ label: "decoded-then-re-encoded", key: encodeURIComponent(dec) });
+    } catch {}
+  } else {
+    attempts.push({ label: "encode-raw", key: encodeURIComponent(serviceKey) });
+    attempts.push({ label: "raw-as-is", key: serviceKey });
   }
 
-  if (res.status === 401) {
-    const decoded = decodeURIComponent(serviceKey);
-    if (decoded !== serviceKey) {
-      const urlDecoded = buildMfdsUrl(endpoint, encodeURIComponent(decoded), params);
-      res = await fetch(urlDecoded);
-    }
+  let lastRes: globalThis.Response | null = null;
+  for (const { label, key } of attempts) {
+    const url = buildMfdsUrl(endpoint, key, params);
+    console.log(`  trying ${label}: serviceKey prefix=${key.slice(0, 20)}...`);
+    const res = await fetch(url);
+    if (res.ok) return res.json();
+    const body = await res.text().catch(() => "");
+    console.log(`  ${label} => ${res.status}: ${body.slice(0, 100)}`);
+    lastRes = res;
   }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`MFDS API final response: ${res.status} body=${text.slice(0, 300)}`);
-    throw new Error(`MFDS API error: ${res.status} ${res.statusText}`);
-  }
-  return res.json();
+  throw new Error(`MFDS API error: ${lastRes?.status} ${lastRes?.statusText}`);
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
