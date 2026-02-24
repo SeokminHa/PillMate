@@ -29,12 +29,13 @@ export default function MonthlyCalendarScreen() {
   const { medications, doseLogs } = useMedications();
   const { t, language } = useLanguage();
   const [selectedMedId, setSelectedMedId] = useState<string | null>(null);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const now = new Date();
   const todayStr = getDateString(now);
+
+  const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
 
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
@@ -67,7 +68,7 @@ export default function MonthlyCalendarScreen() {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     setViewYear(now.getFullYear());
     setViewMonth(now.getMonth());
-    setSelectedDay(null);
+    setSelectedDay(now.getDate());
   };
 
   const firstDayOfMonth = new Date(viewYear, viewMonth, 1);
@@ -292,11 +293,9 @@ export default function MonthlyCalendarScreen() {
             >
               <Ionicons name="chevron-back" size={22} color={Colors.text} />
             </Pressable>
-            <Pressable onPress={goToToday} disabled={isCurrentMonth}>
-              <Text style={[styles.monthTitle, !isCurrentMonth && styles.monthTitleTappable]}>
-                {monthName}
-              </Text>
-            </Pressable>
+            <Text style={styles.monthTitle}>
+              {monthName}
+            </Text>
             <Pressable
               onPress={goToNextMonth}
               hitSlop={12}
@@ -305,6 +304,15 @@ export default function MonthlyCalendarScreen() {
               <Ionicons name="chevron-forward" size={22} color={Colors.text} />
             </Pressable>
           </View>
+          {!isCurrentMonth && (
+            <Pressable
+              onPress={goToToday}
+              style={({ pressed }) => [styles.todayBtn, { opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Ionicons name="today-outline" size={16} color="#FFF" />
+              <Text style={styles.todayBtnText}>{t('today')}</Text>
+            </Pressable>
+          )}
 
           <View style={styles.weekHeader}>
             {weekDays.map((day, i) => (
@@ -468,9 +476,22 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textAlign: "center",
   },
-  monthTitleTappable: {
-    color: Colors.primary,
-    textDecorationLine: "underline",
+  todayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    alignSelf: "center",
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+  todayBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: "#FFF",
   },
   weekHeader: {
     flexDirection: "row",
