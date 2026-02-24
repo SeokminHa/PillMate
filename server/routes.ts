@@ -19,33 +19,24 @@ async function fetchMfds(endpoint: string, params: Record<string, string>) {
   }
 
   const serviceKey = rawKey.trim();
-  const hasPercent = serviceKey.includes("%");
-  const hasPlus = serviceKey.includes("+");
-  const hasSlash = serviceKey.includes("/");
-  const hasEqual = serviceKey.includes("=");
-  console.log(`MFDS key: len=${serviceKey.length}, has%=${hasPercent}, has+=${hasPlus}, has/=${hasSlash}, has==${hasEqual}, first4=${serviceKey.slice(0, 4)}, last4=${serviceKey.slice(-4)}`);
 
-  const attempts: Array<{ label: string; key: string }> = [];
-
-  if (hasPercent) {
-    attempts.push({ label: "raw(already-encoded)", key: serviceKey });
+  const attempts: Array<{ key: string }> = [];
+  if (serviceKey.includes("%")) {
+    attempts.push({ key: serviceKey });
     try {
       const dec = decodeURIComponent(serviceKey);
-      attempts.push({ label: "decoded-then-re-encoded", key: encodeURIComponent(dec) });
+      attempts.push({ key: encodeURIComponent(dec) });
     } catch {}
   } else {
-    attempts.push({ label: "encode-raw", key: encodeURIComponent(serviceKey) });
-    attempts.push({ label: "raw-as-is", key: serviceKey });
+    attempts.push({ key: encodeURIComponent(serviceKey) });
+    attempts.push({ key: serviceKey });
   }
 
   let lastRes: globalThis.Response | null = null;
-  for (const { label, key } of attempts) {
+  for (const { key } of attempts) {
     const url = buildMfdsUrl(endpoint, key, params);
-    console.log(`  trying ${label}: serviceKey prefix=${key.slice(0, 20)}...`);
     const res = await fetch(url);
     if (res.ok) return res.json();
-    const body = await res.text().catch(() => "");
-    console.log(`  ${label} => ${res.status}: ${body.slice(0, 100)}`);
     lastRes = res;
   }
 
