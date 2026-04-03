@@ -42,13 +42,13 @@ export default function AddMedicationScreen() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  const QUICK_TIMES: { key: string; labelKey: 'wakeUp' | 'morning' | 'noon' | 'evening' | 'beforeBed' | 'anytime'; time: string; icon: string }[] = [
-    { key: 'wakeup', labelKey: 'wakeUp', time: '06:30', icon: 'sunny-outline' },
-    { key: 'morning', labelKey: 'morning', time: '08:00', icon: 'partly-sunny-outline' },
-    { key: 'noon', labelKey: 'noon', time: '12:00', icon: 'restaurant-outline' },
-    { key: 'evening', labelKey: 'evening', time: '19:00', icon: 'moon-outline' },
-    { key: 'bedtime', labelKey: 'beforeBed', time: '22:00', icon: 'bed-outline' },
-    { key: 'anytime', labelKey: 'anytime', time: '00:00', icon: 'time-outline' },
+  const [showAdvancedTime, setShowAdvancedTime] = useState(false);
+
+  const TIME_BLOCKS: { key: string; labelKey: 'morningBlock' | 'afternoonBlock' | 'eveningBlock' | 'bedtimeBlock'; time: string; icon: string }[] = [
+    { key: 'morning', labelKey: 'morningBlock', time: '08:00', icon: 'sunny-outline' },
+    { key: 'afternoon', labelKey: 'afternoonBlock', time: '13:00', icon: 'partly-sunny-outline' },
+    { key: 'evening', labelKey: 'eveningBlock', time: '19:00', icon: 'moon-outline' },
+    { key: 'bedtime', labelKey: 'bedtimeBlock', time: '22:00', icon: 'bed-outline' },
   ];
 
   const MEAL_OPTIONS: { meal: string; labelKey: 'breakfast' | 'lunch' | 'dinner'; time: string }[] = [
@@ -281,120 +281,135 @@ export default function AddMedicationScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t('whenToTake')}</Text>
 
-          <View style={styles.quickTimesGrid}>
-            {QUICK_TIMES.map(item => {
+          <View style={styles.timeBlockGrid}>
+            {TIME_BLOCKS.map(item => {
               const isSelected = !!timeEntries.find(e => e.time === item.time && !e.mealTiming);
               return (
                 <Pressable
                   key={item.key}
                   onPress={() => togglePresetTime(item.time, t(item.labelKey))}
-                  style={[styles.quickTimeChip, isSelected && styles.quickTimeChipSelected]}
+                  style={[styles.timeBlockChip, isSelected && styles.timeBlockChipSelected]}
                 >
                   <Ionicons
                     name={item.icon as any}
-                    size={16}
+                    size={20}
                     color={isSelected ? Colors.primaryDark : Colors.textSecondary}
                   />
-                  <Text style={[styles.quickTimeText, isSelected && styles.quickTimeTextSelected]}>
+                  <Text style={[styles.timeBlockText, isSelected && styles.timeBlockTextSelected]}>
                     {t(item.labelKey)}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>{t('mealTiming')}</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.mealTimingRow}>
-            {MEAL_TIMING_OPTIONS.map(opt => (
-              <Pressable
-                key={opt.key}
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  setSelectedMealTiming(opt.key);
-                }}
-                style={[styles.mealTimingChip, selectedMealTiming === opt.key && styles.mealTimingChipSelected]}
-              >
-                <Text style={[styles.mealTimingText, selectedMealTiming === opt.key && styles.mealTimingTextSelected]}>
-                  {t(opt.labelKey)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.mealGrid}>
-            {MEAL_OPTIONS.map(meal => {
-              const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
-              const mealLabel = t(meal.labelKey);
-              const timingText = timingLabel ? t(timingLabel.labelKey) : '';
-              const fullLabel = `${mealLabel} ${timingText}`;
-              const isSelected = !!timeEntries.find(e => e.label === fullLabel);
-              return (
-                <Pressable
-                  key={meal.meal}
-                  onPress={() => addMealTime(meal)}
-                  style={[styles.mealChip, isSelected && styles.mealChipSelected]}
-                >
-                  <Text style={[styles.mealChipText, isSelected && styles.mealChipTextSelected]}>
-                    {mealLabel}
+                  <Text style={[styles.timeBlockTime, isSelected && { color: Colors.primaryDark }]}>
+                    {formatTimeDisplay(item.time)}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>{t('customTime')}</Text>
-            <View style={styles.dividerLine} />
-          </View>
+          <Pressable
+            onPress={() => setShowAdvancedTime(!showAdvancedTime)}
+            style={styles.advancedToggle}
+          >
+            <Ionicons name={showAdvancedTime ? "chevron-up" : "chevron-down"} size={16} color={Colors.textSecondary} />
+            <Text style={styles.advancedToggleText}>{t('exactTimeToggle')}</Text>
+          </Pressable>
 
-          {!showCustomTime ? (
-            <Pressable
-              onPress={() => setShowCustomTime(true)}
-              style={styles.customTimeButton}
-            >
-              <Ionicons name="time-outline" size={16} color={Colors.primary} />
-              <Text style={styles.customTimeButtonText}>{t('orCustomTime')}</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.customTimeRow}>
-              <View style={styles.customTimeInputGroup}>
-                <TextInput
-                  style={styles.customTimeInput}
-                  value={customHour}
-                  onChangeText={(v) => setCustomHour(v.replace(/[^0-9]/g, '').slice(0, 2))}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="09"
-                  placeholderTextColor={Colors.textTertiary}
-                />
-                <Text style={styles.customTimeSeparator}>:</Text>
-                <TextInput
-                  style={styles.customTimeInput}
-                  value={customMinute}
-                  onChangeText={(v) => setCustomMinute(v.replace(/[^0-9]/g, '').slice(0, 2))}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={Colors.textTertiary}
-                />
+          {showAdvancedTime && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>{t('mealTiming')}</Text>
+                <View style={styles.dividerLine} />
               </View>
-              <Pressable
-                onPress={addCustomTime}
-                style={({ pressed }) => [styles.addTimeBtn, { opacity: pressed ? 0.8 : 1 }]}
-              >
-                <Ionicons name="add" size={18} color="#FFF" />
-                <Text style={styles.addTimeBtnText}>{t('add')}</Text>
-              </Pressable>
-              <Pressable onPress={() => setShowCustomTime(false)} hitSlop={8}>
-                <Ionicons name="close" size={22} color={Colors.textTertiary} />
-              </Pressable>
-            </View>
+
+              <View style={styles.mealTimingRow}>
+                {MEAL_TIMING_OPTIONS.map(opt => (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => {
+                      if (Platform.OS !== "web") Haptics.selectionAsync();
+                      setSelectedMealTiming(opt.key);
+                    }}
+                    style={[styles.mealTimingChip, selectedMealTiming === opt.key && styles.mealTimingChipSelected]}
+                  >
+                    <Text style={[styles.mealTimingText, selectedMealTiming === opt.key && styles.mealTimingTextSelected]}>
+                      {t(opt.labelKey)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={styles.mealGrid}>
+                {MEAL_OPTIONS.map(meal => {
+                  const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
+                  const mealLabel = t(meal.labelKey);
+                  const timingText = timingLabel ? t(timingLabel.labelKey) : '';
+                  const fullLabel = `${mealLabel} ${timingText}`;
+                  const isSelected = !!timeEntries.find(e => e.label === fullLabel);
+                  return (
+                    <Pressable
+                      key={meal.meal}
+                      onPress={() => addMealTime(meal)}
+                      style={[styles.mealChip, isSelected && styles.mealChipSelected]}
+                    >
+                      <Text style={[styles.mealChipText, isSelected && styles.mealChipTextSelected]}>
+                        {mealLabel}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>{t('customTime')}</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {!showCustomTime ? (
+                <Pressable
+                  onPress={() => setShowCustomTime(true)}
+                  style={styles.customTimeButton}
+                >
+                  <Ionicons name="time-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.customTimeButtonText}>{t('orCustomTime')}</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.customTimeRow}>
+                  <View style={styles.customTimeInputGroup}>
+                    <TextInput
+                      style={styles.customTimeInput}
+                      value={customHour}
+                      onChangeText={(v) => setCustomHour(v.replace(/[^0-9]/g, '').slice(0, 2))}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      placeholder="09"
+                      placeholderTextColor={Colors.textTertiary}
+                    />
+                    <Text style={styles.customTimeSeparator}>:</Text>
+                    <TextInput
+                      style={styles.customTimeInput}
+                      value={customMinute}
+                      onChangeText={(v) => setCustomMinute(v.replace(/[^0-9]/g, '').slice(0, 2))}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      placeholder="00"
+                      placeholderTextColor={Colors.textTertiary}
+                    />
+                  </View>
+                  <Pressable
+                    onPress={addCustomTime}
+                    style={({ pressed }) => [styles.addTimeBtn, { opacity: pressed ? 0.8 : 1 }]}
+                  >
+                    <Ionicons name="add" size={18} color="#FFF" />
+                    <Text style={styles.addTimeBtnText}>{t('add')}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setShowCustomTime(false)} hitSlop={8}>
+                    <Ionicons name="close" size={22} color={Colors.textTertiary} />
+                  </Pressable>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -540,34 +555,52 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  quickTimesGrid: {
+  timeBlockGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
-  quickTimeChip: {
+  timeBlockChip: {
+    width: "47%" as any,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 14,
     backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
-  quickTimeChipSelected: {
+  timeBlockChipSelected: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primaryBg,
   },
-  quickTimeText: {
+  timeBlockText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  timeBlockTextSelected: {
+    color: Colors.primaryDark,
+  },
+  timeBlockTime: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textTertiary,
+  },
+  advancedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 8,
+  },
+  advancedToggleText: {
     fontFamily: "Inter_500Medium",
     fontSize: 13,
     color: Colors.textSecondary,
-  },
-  quickTimeTextSelected: {
-    color: Colors.primaryDark,
-    fontFamily: "Inter_600SemiBold",
   },
   dividerRow: {
     flexDirection: "row",

@@ -1,0 +1,352 @@
+Please apply the following UX and product improvements to the current app.
+
+1. Greeting text
+- Remove unnatural phrases like “좋은 오후에요, 나”
+- Use neutral or natural Korean such as:
+  - “안녕하세요”
+  - “오늘 복용 상태를 확인해보세요”
+- Do NOT call the user by name in an awkward way
+
+2. Language settings
+- Remove per-medication language settings completely
+- Keep only ONE global language setting
+- Simplify UI and reduce clutter
+
+3. Invite / connection flow
+- Do NOT require full login to accept an invite
+- When user opens invite link:
+  - allow minimal input (e.g., name only)
+  - allow immediate accept
+- Keep friction as low as possible
+
+4. Emoji / nudge system
+- When a user sends an emoji:
+  - show lightweight activity feedback:
+    - “엄마에게 ❤️ 보냄”
+  - also show on receiver side:
+    - “딸이 ❤️ 보냈습니다”
+- Keep this simple and non-intrusive
+
+5. Notification system
+- Add basic reminder notifications based on time blocks
+- Example:
+  - “아침 복용 시간입니다”
+- Do not rely on exact time only
+- Ensure this feature is clearly working
+
+6. Daily summary (IMPORTANT)
+- Add a summary at the top:
+  - “3 of 6 medications completed”
+- Add a progress bar
+
+7. Success state
+- When all medications are completed:
+  - show a clear message:
+    - “오늘 약을 모두 잘 챙겨 드셨습니다 👍”
+  - reduce clutter in UI
+
+8. Duplicate prevention
+- If user tries to mark the same medication again:
+  - show warning:
+    - “이미 복용한 약입니다”
+- Do NOT allow silent duplicate check
+
+9. Caregiver context clarity
+- Always show whose data is being viewed
+- Example:
+  - “엄마 (한국 기준) — 아침 완료”
+
+10. Layout improvement
+- Change main screen from list → time-block grouped dashboard
+- Example:
+  - [아침]
+  - [오후]
+  - [저녁]
+
+Focus on clarity, confidence, and reducing confusion.
+Avoid adding complex new features before fixing these core UX issues.
+
+Please apply the following UX and product improvements to the current app.
+
+1. Greeting text
+- Remove unnatural phrases like “좋은 오후에요, 나”
+- Use neutral or natural Korean such as:
+  - “안녕하세요”
+  - “오늘 복용 상태를 확인해보세요”
+- Do NOT call the user by name in an awkward way
+
+2. Language settings
+- Remove per-medication language settings completely
+- Keep only ONE global language setting
+- Simplify UI and reduce clutter
+
+3. Invite / connection flow
+- Do NOT require full login to accept an invite
+- When user opens invite link:
+  - allow minimal input (e.g., name only)
+  - allow immediate accept
+- Keep friction as low as possible
+
+4. Emoji / nudge system
+- When a user sends an emoji:
+  - show lightweight activity feedback:
+    - “엄마에게 ❤️ 보냄”
+  - also show on receiver side:
+    - “딸이 ❤️ 보냈습니다”
+- Keep this simple and non-intrusive
+
+5. Notification system
+- Add basic reminder notifications based on time blocks
+- Example:
+  - “아침 복용 시간입니다”
+- Do not rely on exact time only
+- Ensure this feature is clearly working
+
+6. Daily summary (IMPORTANT)
+- Add a summary at the top:
+  - “3 of 6 medications completed”
+- Add a progress bar
+
+7. Success state
+- When all medications are completed:
+  - show a clear message:
+    - “오늘 약을 모두 잘 챙겨 드셨습니다 👍”
+  - reduce clutter in UI
+
+8. Duplicate prevention
+- If user tries to mark the same medication again:
+  - show warning:
+    - “이미 복용한 약입니다”
+- Do NOT allow silent duplicate check
+
+9. Caregiver context clarity
+- Always show whose data is being viewed
+- Example:
+  - “엄마 (한국 기준) — 아침 완료”
+
+10. Layout improvement
+- Change main screen from list → time-block grouped dashboard
+- Example:
+  - [아침]
+  - [오후]
+  - [저녁]
+
+Focus on clarity, confidence, and reducing confusion.
+Avoid adding complex new features before fixing these core UX issues.
+
+11. Enhanced medication color visibility
+- Make each medication’s chosen color much more visible in the main dashboard
+- Do NOT use overly strong or saturated backgrounds
+- Use a soft background tint and/or a thick colored left border on each medication card
+- The goal is to help users recognize medications by color instantly, even before reading the name
+
+12. Bulk check-in for each time block
+- If multiple medications exist in the same time block, add a “모두 복용 완료” button
+- Example:
+  - [아침] → “아침 약 모두 복용 완료”
+- Before marking all as taken, show a simple confirmation:
+  - “이 시간대의 약을 모두 복용하셨나요?”
+- Keep individual check-in as well
+
+13. Large, clear check-in button
+- Do NOT rely on tapping text such as “아직 복용하지 않았습니다”
+- Add a large, obvious button such as:
+  - “복용 완료 ✔️”
+- Make the button easy to see and tap, especially for elderly users
+
+14. Simplified medication input flow
+- Simplify the medication creation form
+- Show these by default:
+  - time block (아침 / 오후 / 저녁 / 취침 전)
+  - meal relation (식전 / 식사 중 / 식후)
+- Hide exact time input by default
+- Add a toggle such as:
+  - “정확한 시간 설정”
+- Only show the time picker when this toggle is enabled
+
+15. Timezone handling
+- Each user must have a timezone setting
+- All medication status and dashboard labels must be based on the primary user’s local timezone
+- When a caregiver views another user’s dashboard, always show that it is based on the primary user’s local time
+- Example:
+  - “엄마 (한국 기준) — 아침 완료”
+- Never mix viewer timezone and primary user timezone implicitly
+
+16. Completion / success state
+- When all medications for the day are completed:
+  - show a large positive success state
+  - reduce visual clutter
+- Example:
+  - “오늘 약을 모두 잘 챙겨 드셨습니다 👍”
+- Do NOT just leave the user with a checked list only
+
+17. Guilt-free and supportive UI
+- Avoid sad, angry, or guilt-inducing icons and wording
+- Do NOT make users feel punished for missing a dose
+- Use neutral/supportive Korean copy such as:
+  - “아직 복용하지 않았습니다”
+  - “복용 시간이 지났습니다”
+  - “지금 복용하셔도 괜찮습니다”
+- Focus on current state and next action, not blame
+
+18. Action-oriented medication cards
+- Each medication card should not only show status, but also what the user should do next
+- Examples:
+  - “지금 복용하세요”
+  - “이미 복용했습니다”
+  - “나중에 복용 예정”
+- Make the UI action-guiding, not just informational
+
+19. Daily dashboard summary
+- At the top of the dashboard, show:
+  - completion count
+  - progress bar
+  - if needed, remaining medications count
+- Example:
+  - “오늘 6개 중 3개 완료”
+- This should be visible immediately on app open
+
+20. Calendar / history positioning
+- Keep the calendar/history view, but move it to a secondary History or Progress tab
+- It should not be the main focus of the first screen
+- The primary screen must focus on what the user needs to do today
+
+21. Real caregiver / family / friend sharing system
+- The current family summary is not enough
+- Implement a real system where one user can actually view another user’s medication summary with consent
+- No one should be able to view another person’s status without explicit approval
+
+22. Consent-based connection model
+- The primary user must explicitly allow another person to view their status
+- The sharing flow should feel like:
+  - “I allow this person to view my medication status”
+- Do NOT auto-share any data
+
+23. Low-friction invite flow
+- Do NOT require full login just to accept an invite
+- Use invite links or short invite codes
+- When a user opens an invite:
+  - allow minimal input such as name only
+  - allow immediate accept / reject
+- Keep friction extremely low, especially for elderly users
+
+24. Multiple separate connections
+- Allow one viewer to connect to multiple separate people
+- Example:
+  - mother
+  - father
+  - grandmother
+  - friend
+- These should be separate connections, not one group by default
+- Do NOT add group creation for MVP unless necessary
+
+25. Caregiver / viewer dashboard
+- Add a proper dashboard for connected people
+- Let the user switch between:
+  - My medications
+  - Connected people
+- For connected people, show simple cards such as:
+  - “엄마 — 아침 완료, 저녁 대기”
+  - “아빠 — 오늘 1개 미복용”
+- Keep this summary-focused and easy to scan
+
+26. Connection management
+- Add simple connection management UI
+- The user should be able to:
+  - see connected people
+  - see pending invites
+  - disconnect / remove someone
+- Keep the interface very simple
+
+27. Emoji / nudge activity visibility
+- Keep the emoji system simple and supportive
+- Show lightweight sender feedback such as:
+  - “엄마에게 ❤️ 보냄”
+- Also show on receiver side:
+  - “딸이 ❤️ 보냈습니다”
+
+(자식이 입력할때 상대방의 이름 (엄마 아빠 등)을 지정할 수 있듯, 상대가 나를 추가해도 내가 추가한 사람이 누군지 (아들 딸 등)입력할 수있게 하기)
+- Do not turn this into a full chat feature
+
+28. Notification behavior
+- Add basic reminder notifications based on time blocks
+- Examples:
+  - “아침 복용 시간입니다”
+  - “저녁 약을 확인해보세요”
+- Do not depend only on exact clock time
+- Make sure notifications are actually working
+
+29. Notification-to-action flow
+- When a user taps a notification, take them directly to the relevant medication or time block
+- Reduce friction between reminder and check-in action
+
+30. Duplicate-dose prevention details
+- If the user tries to mark the same medication again in the same time block:
+  - show a warning
+  - show the last taken time if available
+- Example:
+  - “이미 오늘 아침에 복용한 약입니다”
+- Do NOT silently allow duplicate check-ins
+- If override is supported, only allow it after warning
+
+31. Accessibility and tap targets
+- Use large touch targets (minimum about 48x48px)
+- Use high contrast text
+- Keep spacing generous
+- Avoid dense layouts
+- Make the app feel senior-friendly and mobile-first
+
+32. Collapsible time blocks
+- If the user has many medications, allow time blocks to collapse/expand
+- Prefer showing the current relevant time block expanded by default
+- This helps reduce scroll fatigue
+
+33. Reduce visual noise
+- Avoid too many icons, colors, buttons, or repeated controls
+- Keep visual hierarchy clear
+- Remove anything that distracts from:
+  - what to take now
+  - what has already been taken
+  - what is still pending
+
+34. Korean-first UX copy
+- The primary language should be Korean by default
+- English can remain supported, but Korean copy should sound natural and not like direct translation
+- Use calm, plain, human-friendly wording throughout the app
+
+35. Architecture and demo data
+- Update the data model and backend as needed to support:
+  - users
+  - timezone
+  - medications
+  - time blocks
+  - check-ins
+  - invite links or invite codes
+  - pending connection requests
+  - accepted caregiver/viewer connections
+  - multiple separate connected people
+  - emoji/nudge activity
+- Seed demo data for:
+  - one main user
+  - mother
+  - father
+  - example medications and statuses
+
+36. Final implementation priority
+Please prioritize in this order:
+1. Today Dashboard redesign
+2. Large clear check-in + Undo
+3. Duplicate prevention
+4. Daily summary + success state
+5. Real consent-based sharing flow
+6. Multiple separate connected people support
+7. Notification reliability
+8. Color visibility and accessibility polish
+
+Do not over-engineer.
+Do not add unnecessary medical knowledge features.
+Focus on clarity, confidence, ease of use, and real sharing with minimal friction.
+
+
+그리고 이전에 우리가 약 정보 공식 사이트에서 불러오기 위해 저장했던 모든 것들 이제 안할거고 용량만 차지하니까 지워
+

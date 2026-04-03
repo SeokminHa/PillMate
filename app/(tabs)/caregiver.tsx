@@ -161,11 +161,18 @@ export default function CaregiverScreen() {
     ]);
   };
 
-  const handleNudge = async (toUserId: string, type: string) => {
+  const [nudgeFeedback, setNudgeFeedback] = useState<{ userId: string; emoji: string; name: string } | null>(null);
+
+  const handleNudge = async (toUserId: string, type: string, emoji: string, displayName: string) => {
     setNudgeSending(toUserId);
     try {
       await apiRequest('POST', '/api/nudges', { toUserId, type });
-      Alert.alert('', t('nudgeSent'));
+      if (Platform.OS !== "web") {
+        const Haptics = require('expo-haptics');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setNudgeFeedback({ userId: toUserId, emoji, name: displayName });
+      setTimeout(() => setNudgeFeedback(null), 2500);
     } catch {}
     setNudgeSending(null);
   };
@@ -378,13 +385,20 @@ export default function CaregiverScreen() {
                       <TouchableOpacity
                         key={n.type}
                         style={styles.nudgeButton}
-                        onPress={() => handleNudge(otherPerson.id, n.type)}
+                        onPress={() => handleNudge(otherPerson.id, n.type, n.emoji, otherPerson.displayName)}
                         disabled={nudgeSending === otherPerson.id}
                       >
                         <Text style={styles.nudgeEmoji}>{n.emoji}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
+                  {nudgeFeedback && nudgeFeedback.userId === otherPerson.id && (
+                    <Animated.View entering={FadeInDown.springify()} style={styles.nudgeFeedback}>
+                      <Text style={styles.nudgeFeedbackText}>
+                        {nudgeFeedback.name}{t('nudgeSentTo')} {nudgeFeedback.emoji}
+                      </Text>
+                    </Animated.View>
+                  )}
                 </Animated.View>
               );
             })}
@@ -479,6 +493,19 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   nudgeEmoji: { fontSize: 20 },
+  nudgeFeedback: {
+    backgroundColor: Colors.successBg,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  nudgeFeedbackText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: Colors.success,
+  },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 8 },
   emptyIconContainer: {
     width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.surfaceSecondary,

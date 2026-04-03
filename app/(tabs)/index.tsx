@@ -98,24 +98,26 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
     : null;
 
   const statusLabel = status === 'duplicate' ? t('statusDuplicate')
-    : status === 'taken' ? t('statusTaken')
+    : status === 'taken' ? t('alreadyTaken')
     : status === 'overdue' ? t('missedRecovery')
     : t('notTakenYet');
 
+  const actionLabel = status === 'taken' ? t('alreadyTaken')
+    : status === 'overdue' ? t('takeNowAction')
+    : t('takeNow');
+
   return (
-    <Pressable
-      onPress={() => {
-        if (!item.taken) onQuickLog(item);
-      }}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.medCard,
-        { borderLeftColor: item.medication.color, borderLeftWidth: 4 },
+        { borderLeftColor: item.medication.color, borderLeftWidth: 5 },
+        { backgroundColor: item.medication.color + '08' },
         item.taken && styles.medCardTaken,
-        pressed && !item.taken && { transform: [{ scale: 0.98 }] },
       ]}
     >
       <View style={styles.cardTop}>
         <View style={styles.cardNameRow}>
+          <View style={[styles.medColorDot, { backgroundColor: item.medication.color }]} />
           <Text style={[styles.medName, item.taken && styles.medNameTaken]}>
             {item.medication.name}
           </Text>
@@ -125,10 +127,7 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
             </View>
           )}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-          <Ionicons name={config.icon} size={16} color={config.color} />
-          <Text style={[styles.statusText, { color: config.text }]}>{statusLabel}</Text>
-        </View>
+        {dosageInfo ? <Text style={styles.dosageLabel}>{dosageInfo}</Text> : null}
       </View>
 
       <View style={styles.cardBottom}>
@@ -136,41 +135,49 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
           <View style={styles.detailRow}>
             <Ionicons name="time-outline" size={14} color={Colors.textTertiary} />
             <Text style={styles.detailText}>{displayTime}</Text>
-            {dosageInfo ? (
-              <>
-                <Text style={styles.detailDot}>·</Text>
-                <Text style={styles.detailText}>{dosageInfo}</Text>
-              </>
-            ) : null}
           </View>
-          {lastTaken && (
+          {lastTaken && item.taken && (
             <View style={styles.detailRow}>
-              <Ionicons name="checkmark-done-outline" size={14} color={Colors.textTertiary} />
-              <Text style={styles.detailText}>
-                {t('lastTaken')}: {formatRelativeTime(lastTaken, t)}
+              <Ionicons name="checkmark-done-outline" size={14} color={Colors.success} />
+              <Text style={[styles.detailText, { color: Colors.success }]}>
+                {formatRelativeTime(lastTaken, t)}
               </Text>
             </View>
           )}
         </View>
 
-        {!item.taken && (
-          <View style={[styles.tapIndicator, status === 'overdue' && { backgroundColor: Colors.warningBg }]}>
-            <Ionicons
-              name={status === 'overdue' ? "alert-circle" : "add-circle"}
-              size={28}
-              color={status === 'overdue' ? Colors.warning : Colors.primary}
-            />
+        {item.taken ? (
+          <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+            <Ionicons name={config.icon} size={16} color={config.color} />
+            <Text style={[styles.statusText, { color: config.text }]}>{statusLabel}</Text>
           </View>
+        ) : (
+          <Pressable
+            onPress={() => onQuickLog(item)}
+            style={({ pressed }) => [
+              styles.takeButton,
+              status === 'overdue' && styles.takeButtonOverdue,
+              pressed && { transform: [{ scale: 0.95 }], opacity: 0.9 },
+            ]}
+          >
+            <Ionicons
+              name={status === 'overdue' ? "alert-circle" : "checkmark-circle"}
+              size={18}
+              color="#FFF"
+            />
+            <Text style={styles.takeButtonText}>{actionLabel}</Text>
+          </Pressable>
         )}
       </View>
-    </Pressable>
+    </View>
   );
 }
 
-function TimeBlockSection({ block, items, onQuickLog, index, doseLogs }: {
+function TimeBlockSection({ block, items, onQuickLog, onBulkLog, index, doseLogs }: {
   block: TimeBlock;
   items: ScheduleItem[];
   onQuickLog: (item: ScheduleItem) => void;
+  onBulkLog: (items: ScheduleItem[]) => void;
   index: number;
   doseLogs: any[];
 }) {
@@ -184,6 +191,7 @@ function TimeBlockSection({ block, items, onQuickLog, index, doseLogs }: {
 
   const completedCount = items.filter(i => i.taken).length;
   const allDone = completedCount === items.length;
+  const pendingItems = items.filter(i => !i.taken);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -219,6 +227,18 @@ function TimeBlockSection({ block, items, onQuickLog, index, doseLogs }: {
           />
         );
       })}
+      {pendingItems.length > 1 && (
+        <Pressable
+          onPress={() => onBulkLog(pendingItems)}
+          style={({ pressed }) => [
+            styles.bulkButton,
+            pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+          ]}
+        >
+          <Ionicons name="checkmark-done" size={18} color={Colors.primary} />
+          <Text style={styles.bulkButtonText}>{t('bulkCheckIn')}</Text>
+        </Pressable>
+      )}
     </Animated.View>
   );
 }
@@ -237,8 +257,8 @@ export default function TodayScreen() {
   const progress = total === 0 ? 0 : Math.round((taken / total) * 100);
 
   const now = new Date();
-  const baseGreeting = now.getHours() < 12 ? t('goodMorning') : now.getHours() < 18 ? t('goodAfternoon') : t('goodEvening');
-  const greeting = user ? `${baseGreeting}, ${user.displayName}` : baseGreeting;
+  const greeting = t('greeting');
+  const subGreeting = t('greetingSub');
   const dateLocale = language === 'ko' ? 'ko-KR' : 'en-US';
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -285,6 +305,25 @@ export default function TodayScreen() {
     setUndoState(null);
   }, [undoState, undoDose]);
 
+  const handleBulkLog = useCallback(async (pendingItems: ScheduleItem[]) => {
+    Alert.alert(
+      t('bulkCheckIn'),
+      t('bulkCheckInConfirm'),
+      [
+        { text: t('cancel'), style: "cancel" },
+        {
+          text: t('confirm'),
+          onPress: async () => {
+            if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            for (const item of pendingItems) {
+              await quickLogDose(item.medication.id, item.scheduledTime);
+            }
+          },
+        },
+      ]
+    );
+  }, [quickLogDose, t]);
+
   const blockOrder: TimeBlock[] = ['morning', 'afternoon', 'evening', 'bedtime'];
   const activeBlocks = blockOrder.filter(b => blockSchedule[b].length > 0);
 
@@ -293,9 +332,7 @@ export default function TodayScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.dateText}>
-            {now.toLocaleDateString(dateLocale, { weekday: "long", month: "long", day: "numeric" })}
-          </Text>
+          <Text style={styles.dateText}>{subGreeting}</Text>
         </View>
         <Pressable
           onPress={() => {
@@ -358,6 +395,7 @@ export default function TodayScreen() {
                 block={block}
                 items={blockSchedule[block]}
                 onQuickLog={handleQuickLog}
+                onBulkLog={handleBulkLog}
                 index={index}
                 doseLogs={doseLogs}
               />
@@ -658,13 +696,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textTertiary,
   },
-  tapIndicator: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryBg,
+  medColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  dosageLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  takeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  takeButtonOverdue: {
+    backgroundColor: Colors.warning,
+  },
+  takeButtonText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: "#FFF",
+  },
+  bulkButton: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + "40",
+    backgroundColor: Colors.primaryBg,
+    borderStyle: "dashed" as any,
+  },
+  bulkButtonText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: Colors.primary,
   },
   snackbar: {
     position: "absolute",

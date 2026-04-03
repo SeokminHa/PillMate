@@ -56,10 +56,6 @@ function AppContent() {
           name="photo-archive"
           options={{ presentation: "modal", headerShown: false }}
         />
-        <Stack.Screen
-          name="drug-info"
-          options={{ presentation: "modal", headerShown: false }}
-        />
       </Stack>
     </MedicationProvider>
   );
