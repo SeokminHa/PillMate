@@ -1,0 +1,183 @@
+==================================================
+1. TAB NAME UPDATE
+==================================================
+- Rename “가족 요약” to a more general and inclusive name
+- Recommended: “함께 보기”
+- This should include both family and friends
+
+==================================================
+2. MEDICATION-LEVEL PROGRESS SUMMARY
+==================================================
+- Show per-medication progress in Today screen
+- Example:
+  - “오메가3 1/3   비타민C 2/2”
+- Place this near the top summary or under progress bar
+- This reduces confusion about individual medications
+
+==================================================
+3. COMPACT CARD DESIGN
+==================================================
+- Reduce vertical spacing of medication cards
+- Make layout more compact to reduce scrolling
+- Ensure multiple medications fit within one screen when possible
+
+==================================================
+4. CURRENT TIME BLOCK HIGHLIGHT
+==================================================
+- Highlight the current relevant time block (e.g., morning)
+- Make it visually distinct from others
+- This helps users focus on what to do now
+
+==================================================
+5. CALENDAR SIMPLIFICATION
+==================================================
+- Remove duplicate calendar views
+- Use one unified calendar system
+- Clicking the top calendar should expand into detailed view
+- Avoid redundant UI
+
+==================================================
+6. CALENDAR VISUAL DESIGN
+==================================================
+- Remove confusing emoji-based indicators
+- Replace with clear color-based system:
+  - Green = completed
+  - Gray = no data
+  - Yellow = partial
+- Alternatively use filled circle indicators
+
+==================================================
+7. PHOTO FEATURE DECISION
+==================================================
+- Current implementation is inconsistent
+- Choose one:
+
+Option A:
+- Remove photo archive completely for MVP
+
+Option B:
+- Add optional photo input when marking medication as taken
+
+For now, prefer Option A to reduce complexity
+
+==================================================
+8. CAREGIVER NUDGE SYSTEM (CONTROLLED)
+==================================================
+- Allow caregivers to send preset messages only:
+  - “복용 시간이에요 💊”
+  - “잘 챙겨 드셨어요 👍”
+- Do NOT allow free text input
+- Show activity feedback:
+  - sender: “엄마에게 💊 보냄”
+  - receiver: “딸이 💊 보냈습니다”
+
+==================================================
+9. REMAINING MEDICATION INDICATOR
+==================================================
+- Show how many medications are left for today
+- Example:
+  - “아직 2개 남음”
+- Place near summary or progress bar
+
+==================================================
+10. CAREGIVER PRIORITY VIEW
+==================================================
+- In caregiver dashboard:
+  - highlight important situations first
+- Example:
+  - “오늘 1개 미복용”
+  - “모두 완료”
+- Avoid flat list of data
+
+==================================================
+11. OPTIONAL (POST-MVP)
+==================================================
+- In calendar view:
+  - allow selecting a specific medication
+  - show count like:
+    - “오메가3: 1/3”
+- This is not required for MVP but can be added later
+
+==================================================
+13. STICKY PROGRESS HEADER
+==================================================
+
+Make the daily summary and progress bar “sticky” at the top of the Today dashboard.
+
+As the user scrolls down to view Evening/Bedtime medications, they should still always see their overall daily progress at the top of the screen.
+
+==================================================
+14. FORGIVING UNDO INTERACTION
+==================================================
+
+Snackbars disappear too quickly for older users.
+
+Allow users to tap a “Taken” medication card again to uncheck it.
+
+When they tap to uncheck, show a simple confirmation dialog: “복용 기록을 취소하시겠습니까? (Cancel / Confirm)” to prevent accidental unchecking.
+
+==================================================
+15. FRIENDLY EMPTY STATES
+==================================================
+
+If it’s the beginning of the day and no medications have been taken yet, display a warm greeting near the top, such as: “오늘 하루도 건강하게 시작해 볼까요? ☀️”
+
+Ensure that any screens without data (e.g., no connected family members yet) have friendly, instructive text rather than just blank space.
+
+
+
+
+Update the sharing/connection model to be approval-based and directional.
+
+Important:
+Entering an invite code must NOT create an immediate connection.
+
+New required behavior:
+1. If User A enters User B’s invite code, this should create a pending request only.
+2. User B (the invite code owner / primary user) must receive a request and explicitly approve it.
+3. Only after approval should User A be allowed to view User B’s medication status.
+
+Please model this as a directed permission system, not an undirected friendship system.
+
+Meaning:
+- A may be allowed to view B
+- B does NOT automatically gain permission to view A
+
+This app should support asymmetric relationships such as:
+- child can view mother
+- mother does not automatically view child
+
+Please update the UI accordingly.
+
+In the sharing tab, show separate sections:
+1. People I can view
+2. People who can view me
+
+Each section should show clear status:
+- accepted
+- pending
+- rejected
+- revoked / removed
+
+Examples:
+- People I can view:
+  - Mom — accepted
+  - Dad — pending approval
+- People who can view me:
+  - Sister — accepted
+  - Friend — request pending
+
+Please make the UX feel like permission and consent management, not generic social connection.
+
+Suggested wording:
+- “OO님이 회원님의 복용 상태를 보려고 합니다”
+- “승인 후 함께 보기에서 확인할 수 있습니다”
+- “내 상태를 볼 수 있는 사람”
+- “내가 보고 있는 사람”
+
+Please update the backend/data model as needed to support:
+- owner_user_id
+- viewer_user_id
+- request status
+- created_at / approved_at
+- optional relationship label

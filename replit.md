@@ -14,7 +14,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend (Mobile App)
 - **Framework**: Expo SDK 54 with React Native 0.81, using the new architecture (`newArchEnabled: true`)
-- **Routing**: expo-router with file-based routing. Four main tabs (Today Dashboard, Medications, History, Caregiver/Family) plus modal screens for adding medications and taking photos
+- **Routing**: expo-router with file-based routing. Four main tabs (Today Dashboard, Medications, History, Together/함께 보기) plus modal screens for adding medications and taking photos
 - **State Management**: React Context (`MedicationContext`, `LanguageContext`, `AuthContext`) with server API backing. MedicationContext fetches/mutates data via Express API. AuthContext manages session-based login/logout.
 - **UI**: Custom components with no external UI library. Uses Inter font family, custom color constants in `constants/colors.ts`, react-native-reanimated for animations, and expo-haptics for tactile feedback
 - **Internationalization**: Custom i18n implementation via `LanguageContext` supporting Korean (`ko`) and English (`en`)
@@ -22,8 +22,8 @@ Preferred communication style: Simple, everyday language.
   - `app/auth.tsx` — Login/register screen (auth-gated, shown when not logged in)
   - `app/(tabs)/index.tsx` — Today Dashboard with time-block grouping (Morning/Afternoon/Evening/Bedtime), one-tap check-in with undo snackbar, duplicate-dose protection, visual status indicators (green=taken, gray=pending, yellow=overdue, red=duplicate), "last taken" timestamps, guilt-free messaging, and 100% completion success card
   - `app/(tabs)/medications.tsx` — List of all medications with delete, edit, drag-to-reorder, plus a profile/settings footer showing user info, language toggle, and logout
-  - `app/(tabs)/history.tsx` — Statistics (streak, weekly chart, completion rates), links to monthly calendar and photo archive
-  - `app/(tabs)/caregiver.tsx` — Real caregiver sharing: invite code generation (6-char, 7-day expiry), code acceptance, multi-person viewer cards with timezone labels, block-level summaries, nudge system (heart/pill/clock/thumbsup emojis)
+  - `app/(tabs)/history.tsx` — Statistics (streak, weekly chart, completion rates), link to monthly calendar (photo archive removed for MVP)
+  - `app/(tabs)/caregiver.tsx` — Directional consent-based sharing ("함께 보기" / "Together"): invite code generation, pending approval requests, "People I can view" with priority sorting (missed first), "People who can view me" management, preset nudge system (💊👍❤️⏰), rejected/pending state visibility
   - `app/add-medication.tsx` — Form sheet modal for adding new medications (name, dosage, timing, color)
   - `app/take-photo.tsx` — Camera modal for photo verification when logging a dose
 
@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
   - Invites: POST `/api/invites`, POST `/api/invites/accept`
   - Nudges: GET `/api/nudges`, POST `/api/nudges`, PUT `/api/nudges/:id/read`
   - Summaries: GET `/api/summary/:userId`
-- **Authorization**: All mutation endpoints verify resource ownership (user can only modify their own medications, dose logs, connections, nudges). Ownership checks use `getMedication`, `getDoseLogById`, `getConnectionById`, `getNudgeById` before allowing mutations.
+- **Authorization**: All mutation endpoints verify resource ownership. Directional sharing: `requesterId` = viewer, `targetId` = owner. Summaries only accessible if viewer has accepted connection. Nudge types restricted to preset list (reminder, praise, heart, time). Invite code acceptance creates pending connection requiring owner approval.
 - **Storage**: `server/storage.ts` — `DatabaseStorage` class with full PostgreSQL CRUD via Drizzle ORM
 - **Seed data**: Demo accounts seeded on startup — `demo/1234`, `mom/1234`, `dad/1234` with pre-configured medications and connections
 
@@ -53,7 +53,7 @@ Preferred communication style: Simple, everyday language.
 - All medication, dose log, connection, and nudge data is managed server-side via PostgreSQL
 - `MedicationContext` acts as a bridge: fetches from `/api/medications` and `/api/dose-logs`, exposes same interface as before
 - `AuthContext` manages login/register/logout via session API
-- Caregiver tab fetches connected users' summaries via `/api/summary/:userId`
+- Together tab (caregiver) fetches connected users' summaries via `/api/summary/:userId` (directional: only viewer can access owner's summary)
 - `lib/query-client.ts` provides `apiRequest()` and `getApiUrl()` for making authenticated API calls
 
 ### Build & Deployment

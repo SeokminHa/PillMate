@@ -1,10 +1,10 @@
-import { StyleSheet, Text, View, FlatList, Pressable, Platform, Alert } from "react-native";
+import { StyleSheet, Text, View, FlatList, Pressable, Platform, Alert, SectionList } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Colors from "@/constants/colors";
 import { useMedications, ScheduleItem, TimeBlock, getDoseStatus, DoseStatus } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -31,22 +31,29 @@ const STATUS_CONFIG: Record<DoseStatus, { bg: string; text: string; icon: keyof 
   duplicate: { bg: Colors.dangerBg, text: Colors.danger, icon: "warning", color: Colors.danger },
 };
 
-function formatRelativeTime(isoString: string, t: (key: any) => string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return t('justNow');
-  if (minutes < 60) return `${minutes}${t('minutesAgo')}`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}${t('hoursAgo')}`;
-  return t('todayAt');
-}
-
 function formatTime(time: string): string {
   const [h, m] = time.split(":");
   const hour = parseInt(h, 10);
   const ampm = hour >= 12 ? "PM" : "AM";
   const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${displayHour}:${m} ${ampm}`;
+}
+
+function formatActualTime(isoString: string): string {
+  const d = new Date(isoString);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function getCurrentBlock(): TimeBlock {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  if (h < 21) return 'evening';
+  return 'bedtime';
 }
 
 interface UndoState {
@@ -78,7 +85,12 @@ function UndoSnackbar({ medName, onUndo, onDismiss }: { medName: string; onUndo:
   );
 }
 
-function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem; onQuickLog: (item: ScheduleItem) => void; isDuplicate: boolean }) {
+function MedicationCard({ item, onQuickLog, onUndoTaken, isDuplicate }: {
+  item: ScheduleItem;
+  onQuickLog: (item: ScheduleItem) => void;
+  onUndoTaken: (item: ScheduleItem) => void;
+  isDuplicate: boolean;
+}) {
   const { t } = useLanguage();
   const { getLastTakenTime } = useMedications();
   const rawStatus = getDoseStatus(item.scheduledTime, item.taken);
@@ -97,59 +109,48 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
     : item.timeEntry?.mealTiming === 'during' ? t('duringMeal')
     : null;
 
-  const statusLabel = status === 'duplicate' ? t('statusDuplicate')
-    : status === 'taken' ? t('alreadyTaken')
-    : status === 'overdue' ? t('missedRecovery')
-    : t('notTakenYet');
-
-  const actionLabel = status === 'taken' ? t('alreadyTaken')
-    : status === 'overdue' ? t('takeNowAction')
-    : t('takeNow');
+  const actionLabel = status === 'overdue' ? t('takeNowAction') : t('takeNow');
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={() => {
+        if (item.taken) onUndoTaken(item);
+      }}
+      style={({ pressed }) => [
         styles.medCard,
-        { borderLeftColor: item.medication.color, borderLeftWidth: 5 },
-        { backgroundColor: item.medication.color + '08' },
+        { borderLeftColor: item.medication.color, borderLeftWidth: 4 },
         item.taken && styles.medCardTaken,
+        pressed && item.taken && { opacity: 0.7 },
       ]}
     >
-      <View style={styles.cardTop}>
-        <View style={styles.cardNameRow}>
-          <View style={[styles.medColorDot, { backgroundColor: item.medication.color }]} />
-          <Text style={[styles.medName, item.taken && styles.medNameTaken]}>
-            {item.medication.name}
-          </Text>
-          {mealLabel && (
-            <View style={styles.mealBadge}>
-              <Text style={styles.mealBadgeText}>{mealLabel}</Text>
-            </View>
-          )}
-        </View>
-        {dosageInfo ? <Text style={styles.dosageLabel}>{dosageInfo}</Text> : null}
-      </View>
-
-      <View style={styles.cardBottom}>
-        <View style={styles.cardDetails}>
-          <View style={styles.detailRow}>
-            <Ionicons name="time-outline" size={14} color={Colors.textTertiary} />
-            <Text style={styles.detailText}>{displayTime}</Text>
+      <View style={styles.cardRow}>
+        <View style={[styles.medColorDot, { backgroundColor: item.medication.color }]} />
+        <View style={styles.cardInfo}>
+          <View style={styles.cardNameRow}>
+            <Text style={[styles.medName, item.taken && styles.medNameTaken]} numberOfLines={1}>
+              {item.medication.name}
+            </Text>
+            {dosageInfo ? <Text style={styles.dosageInline}>{dosageInfo}</Text> : null}
+            {mealLabel && <Text style={styles.mealInline}>{mealLabel}</Text>}
           </View>
-          {lastTaken && item.taken && (
-            <View style={styles.detailRow}>
-              <Ionicons name="checkmark-done-outline" size={14} color={Colors.success} />
-              <Text style={[styles.detailText, { color: Colors.success }]}>
-                {formatRelativeTime(lastTaken, t)}
-              </Text>
-            </View>
-          )}
+          <View style={styles.detailRow}>
+            <Ionicons name="time-outline" size={12} color={Colors.textTertiary} />
+            <Text style={styles.detailText}>{displayTime}</Text>
+            {lastTaken && item.taken && (
+              <>
+                <Text style={styles.detailDot}>·</Text>
+                <Ionicons name="checkmark" size={12} color={Colors.success} />
+                <Text style={[styles.detailText, { color: Colors.success }]}>
+                  {formatActualTime(lastTaken)}
+                </Text>
+              </>
+            )}
+          </View>
         </View>
 
         {item.taken ? (
           <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-            <Ionicons name={config.icon} size={16} color={config.color} />
-            <Text style={[styles.statusText, { color: config.text }]}>{statusLabel}</Text>
+            <Ionicons name={config.icon} size={14} color={config.color} />
           </View>
         ) : (
           <Pressable
@@ -162,24 +163,26 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
           >
             <Ionicons
               name={status === 'overdue' ? "alert-circle" : "checkmark-circle"}
-              size={18}
+              size={16}
               color="#FFF"
             />
             <Text style={styles.takeButtonText}>{actionLabel}</Text>
           </Pressable>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
-function TimeBlockSection({ block, items, onQuickLog, onBulkLog, index, doseLogs }: {
+function TimeBlockSection({ block, items, onQuickLog, onUndoTaken, onBulkLog, index, doseLogs, isCurrentBlock }: {
   block: TimeBlock;
   items: ScheduleItem[];
   onQuickLog: (item: ScheduleItem) => void;
+  onUndoTaken: (item: ScheduleItem) => void;
   onBulkLog: (items: ScheduleItem[]) => void;
   index: number;
   doseLogs: any[];
+  isCurrentBlock: boolean;
 }) {
   const { t } = useLanguage();
   const blockLabels: Record<TimeBlock, string> = {
@@ -192,20 +195,26 @@ function TimeBlockSection({ block, items, onQuickLog, onBulkLog, index, doseLogs
   const completedCount = items.filter(i => i.taken).length;
   const allDone = completedCount === items.length;
   const pendingItems = items.filter(i => !i.taken);
-
   const today = new Date().toISOString().split('T')[0];
 
   return (
     <Animated.View
-      entering={Platform.OS !== "web" ? FadeInDown.delay(index * 100).springify() : undefined}
-      style={styles.blockSection}
+      entering={Platform.OS !== "web" ? FadeInDown.delay(index * 80).springify() : undefined}
+      style={[styles.blockSection, isCurrentBlock && styles.blockSectionCurrent]}
     >
       <View style={styles.blockHeader}>
         <View style={styles.blockTitleRow}>
-          <View style={[styles.blockIconContainer, { backgroundColor: BLOCK_COLORS[block] + "15" }]}>
-            <Ionicons name={BLOCK_ICONS[block]} size={18} color={BLOCK_COLORS[block]} />
+          <View style={[
+            styles.blockIconContainer,
+            { backgroundColor: BLOCK_COLORS[block] + "15" },
+            isCurrentBlock && { backgroundColor: BLOCK_COLORS[block] + "25" },
+          ]}>
+            <Ionicons name={BLOCK_ICONS[block]} size={16} color={BLOCK_COLORS[block]} />
           </View>
-          <Text style={styles.blockTitle}>{blockLabels[block]}</Text>
+          <Text style={[styles.blockTitle, isCurrentBlock && { color: BLOCK_COLORS[block] }]}>
+            {blockLabels[block]}
+          </Text>
+          {isCurrentBlock && <View style={styles.currentDot} />}
         </View>
         <View style={[styles.blockCountBadge, allDone && styles.blockCountDone]}>
           <Text style={[styles.blockCountText, allDone && styles.blockCountTextDone]}>
@@ -223,6 +232,7 @@ function TimeBlockSection({ block, items, onQuickLog, onBulkLog, index, doseLogs
             key={`${item.medication.id}-${item.scheduledTime}`}
             item={item}
             onQuickLog={onQuickLog}
+            onUndoTaken={onUndoTaken}
             isDuplicate={duplicateCount > 1}
           />
         );
@@ -235,7 +245,7 @@ function TimeBlockSection({ block, items, onQuickLog, onBulkLog, index, doseLogs
             pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
           ]}
         >
-          <Ionicons name="checkmark-done" size={18} color={Colors.primary} />
+          <Ionicons name="checkmark-done" size={16} color={Colors.primary} />
           <Text style={styles.bulkButtonText}>{t('bulkCheckIn')}</Text>
         </Pressable>
       )}
@@ -254,13 +264,30 @@ export default function TodayScreen() {
   const blockSchedule = getTodayScheduleByBlock();
   const taken = schedule.filter(s => s.taken).length;
   const total = schedule.length;
+  const remaining = total - taken;
   const progress = total === 0 ? 0 : Math.round((taken / total) * 100);
+  const currentBlock = getCurrentBlock();
 
   const now = new Date();
-  const greeting = t('greeting');
-  const subGreeting = t('greetingSub');
-  const dateLocale = language === 'ko' ? 'ko-KR' : 'en-US';
+  const hour = now.getHours();
+  const isStart = taken === 0 && total > 0;
+  const greeting = isStart
+    ? t('friendlyStart')
+    : t('greeting');
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+
+  const medProgress = useMemo(() => {
+    const medMap: Record<string, { name: string; taken: number; total: number; color: string }> = {};
+    for (const s of schedule) {
+      const id = s.medication.id;
+      if (!medMap[id]) {
+        medMap[id] = { name: s.medication.name, taken: 0, total: 0, color: s.medication.color };
+      }
+      medMap[id].total++;
+      if (s.taken) medMap[id].taken++;
+    }
+    return Object.values(medMap);
+  }, [schedule]);
 
   const handleQuickLog = useCallback(async (item: ScheduleItem) => {
     if (isDuplicateDose(item.medication.id, item.scheduledTime)) {
@@ -297,6 +324,29 @@ export default function TodayScreen() {
     setUndoState({ logId: log.id, medName: item.medication.name, timer });
   }, [quickLogDose, undoState]);
 
+  const handleUndoTaken = useCallback(async (item: ScheduleItem) => {
+    Alert.alert(
+      t('undoTakenTitle'),
+      t('undoTakenMessage'),
+      [
+        { text: t('cancel'), style: "cancel" },
+        {
+          text: t('confirm'),
+          onPress: async () => {
+            const today = new Date().toISOString().split('T')[0];
+            const log = doseLogs.find(
+              l => l.date === today && l.medicationId === item.medication.id && l.scheduledTime === item.scheduledTime
+            );
+            if (log) {
+              await undoDose(log.id);
+              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+          },
+        },
+      ]
+    );
+  }, [doseLogs, undoDose, t]);
+
   const handleUndo = useCallback(async () => {
     if (!undoState) return;
     clearTimeout(undoState.timer);
@@ -330,9 +380,8 @@ export default function TodayScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.dateText}>{subGreeting}</Text>
         </View>
         <Pressable
           onPress={() => {
@@ -347,57 +396,59 @@ export default function TodayScreen() {
 
       {medications.length > 0 ? (
         <>
+          <View style={styles.stickyProgress}>
+            {progress === 100 ? (
+              <View style={styles.successBar}>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+                <Text style={styles.successBarText}>{t('allDoneSuccess')}</Text>
+                <Text style={styles.successBarCount}>{taken}/{total}</Text>
+              </View>
+            ) : (
+              <View style={styles.progressCard}>
+                <View style={styles.progressTopRow}>
+                  <Text style={styles.progressLabel}>{taken}/{total} {t('completedOf')}</Text>
+                  {remaining > 0 && (
+                    <Text style={styles.remainingLabel}>{remaining}{t('remainingCount')}</Text>
+                  )}
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: `${progress}%` as any }]} />
+                </View>
+                {medProgress.length > 0 && (
+                  <View style={styles.medProgressRow}>
+                    {medProgress.map((mp) => (
+                      <View key={mp.name} style={styles.medProgressItem}>
+                        <View style={[styles.medProgressDot, { backgroundColor: mp.color }]} />
+                        <Text style={[
+                          styles.medProgressText,
+                          mp.taken === mp.total && { color: Colors.success },
+                        ]}>
+                          {mp.name} {mp.taken}/{mp.total}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
           <FlatList
             data={activeBlocks}
             keyExtractor={(item) => item}
             contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
             showsVerticalScrollIndicator={false}
             scrollEnabled={!!activeBlocks.length}
-            ListHeaderComponent={() => (
-              <>
-                {progress === 100 ? (
-                  <View style={styles.successCard}>
-                    <View style={styles.successIconContainer}>
-                      <Ionicons name="checkmark-circle" size={56} color={Colors.success} />
-                    </View>
-                    <Text style={styles.successTitle}>{t('allDoneSuccess')}</Text>
-                    <View style={styles.successProgressRow}>
-                      <Text style={styles.successCount}>{taken}/{total}</Text>
-                      <Text style={styles.successLabel}>{t('caregiverCompleted')}</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.progressCard}>
-                    <View style={styles.progressInfo}>
-                      <Text style={styles.progressLabel}>{t('overallProgress')}</Text>
-                      <Text style={styles.progressValue}>
-                        <Text style={styles.progressHighlight}>{taken}</Text>
-                        <Text style={styles.progressTotal}> / {total}</Text>
-                      </Text>
-                    </View>
-                    <View style={styles.progressBarContainer}>
-                      <View style={styles.progressBarBg}>
-                        <View style={[
-                          styles.progressBarFill,
-                          { width: `${progress}%` as any },
-                        ]} />
-                      </View>
-                      <Text style={styles.progressPercent}>
-                        {progress}%
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </>
-            )}
             renderItem={({ item: block, index }) => (
               <TimeBlockSection
                 block={block}
                 items={blockSchedule[block]}
                 onQuickLog={handleQuickLog}
+                onUndoTaken={handleUndoTaken}
                 onBulkLog={handleBulkLog}
                 index={index}
                 doseLogs={doseLogs}
+                isCurrentBlock={block === currentBlock}
               />
             )}
             ListEmptyComponent={() => (
@@ -451,168 +502,159 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   greeting: {
     fontFamily: "Inter_700Bold",
-    fontSize: 26,
+    fontSize: 22,
     color: Colors.text,
   },
-  dateText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  listContent: {
+  stickyProgress: {
     paddingHorizontal: 20,
-    gap: 16,
+    paddingBottom: 8,
   },
   progressCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    marginBottom: 4,
+    gap: 8,
   },
-  progressInfo: {
+  progressTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 12,
+    alignItems: "center",
   },
   progressLabel: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 16,
+    fontSize: 14,
     color: Colors.text,
   },
-  progressValue: {
-    flexDirection: "row",
-    alignItems: "baseline",
-  },
-  progressHighlight: {
-    fontFamily: "Inter_700Bold",
-    color: Colors.primary,
-    fontSize: 22,
-  },
-  progressTotal: {
+  remainingLabel: {
     fontFamily: "Inter_500Medium",
-    color: Colors.textSecondary,
-    fontSize: 16,
-  },
-  progressBarContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    fontSize: 12,
+    color: Colors.warning,
   },
   progressBarBg: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: Colors.borderLight,
     overflow: "hidden",
   },
   progressBarFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
     backgroundColor: Colors.primary,
   },
-  progressPercent: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: Colors.primary,
-    minWidth: 40,
-    textAlign: "right",
+  medProgressRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  successCard: {
+  medProgressItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  medProgressDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  medProgressText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textSecondary,
+  },
+  successBar: {
     backgroundColor: Colors.successBg,
-    borderRadius: 20,
-    padding: 28,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.success + "30",
-    marginBottom: 4,
-    gap: 12,
-  },
-  successIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.success + "15",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  successTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-    color: Colors.success,
-    textAlign: "center",
-  },
-  successProgressRow: {
+    borderRadius: 14,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.success + "30",
   },
-  successCount: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 20,
+  successBarText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
     color: Colors.success,
+    flex: 1,
   },
-  successLabel: {
-    fontFamily: "Inter_500Medium",
+  successBarCount: {
+    fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: Colors.success,
   },
+  listContent: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
   blockSection: {
-    gap: 8,
+    gap: 6,
+  },
+  blockSectionCurrent: {
+    backgroundColor: Colors.primaryBg + "40",
+    marginHorizontal: -12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
   },
   blockHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   blockTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   blockIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   blockTitle: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 16,
+    fontSize: 14,
     color: Colors.text,
+  },
+  currentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
   },
   blockCountBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     backgroundColor: Colors.surfaceSecondary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   blockCountDone: {
     backgroundColor: Colors.successBg,
   },
   blockCountText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textSecondary,
   },
   blockCountTextDone: {
@@ -620,66 +662,57 @@ const styles = StyleSheet.create({
   },
   medCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   medCardTaken: {
-    opacity: 0.65,
+    opacity: 0.6,
   },
-  cardTop: {
+  cardRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    gap: 10,
+  },
+  medColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  cardInfo: {
+    flex: 1,
+    gap: 2,
   },
   cardNameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    flex: 1,
-    marginRight: 8,
+    gap: 6,
+    flexWrap: "wrap",
   },
   medName: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 17,
+    fontSize: 15,
     color: Colors.text,
   },
   medNameTaken: {
     color: Colors.textTertiary,
   },
-  mealBadge: {
-    backgroundColor: Colors.primaryBg,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+  dosageInline: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textSecondary,
   },
-  mealBadgeText: {
+  mealInline: {
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: Colors.primaryDark,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  statusText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-  },
-  cardBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  cardDetails: {
-    flex: 1,
-    gap: 4,
+    backgroundColor: Colors.primaryBg,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    overflow: "hidden",
   },
   detailRow: {
     flexDirection: "row",
@@ -688,49 +721,45 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textTertiary,
   },
   detailDot: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textTertiary,
   },
-  medColorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  dosageLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
+  statusBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   takeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   takeButtonOverdue: {
     backgroundColor: Colors.warning,
   },
   takeButtonText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 12,
     color: "#FFF",
   },
   bulkButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
+    gap: 4,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: Colors.primary + "40",
     backgroundColor: Colors.primaryBg,
@@ -738,7 +767,7 @@ const styles = StyleSheet.create({
   },
   bulkButtonText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.primary,
   },
   snackbar: {
@@ -748,8 +777,8 @@ const styles = StyleSheet.create({
     right: 20,
     backgroundColor: "#1A1A1A",
     borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -762,25 +791,25 @@ const styles = StyleSheet.create({
   snackbarContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flex: 1,
   },
   snackbarText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 14,
+    fontSize: 13,
     color: "#FFF",
     flex: 1,
   },
   snackbarAction: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: Colors.primary,
     marginLeft: 8,
   },
   snackbarActionText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 12,
     color: "#FFF",
   },
   emptySchedule: {

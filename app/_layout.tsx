@@ -52,10 +52,6 @@ function AppContent() {
           name="monthly-calendar"
           options={{ presentation: "modal", headerShown: false }}
         />
-        <Stack.Screen
-          name="photo-archive"
-          options={{ presentation: "modal", headerShown: false }}
-        />
       </Stack>
     </MedicationProvider>
   );

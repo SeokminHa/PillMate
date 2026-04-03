@@ -132,22 +132,6 @@ export default function HistoryScreen() {
               <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/photo-archive");
-              }}
-              style={({ pressed }) => [styles.navCard, { opacity: pressed ? 0.85 : 1 }]}
-            >
-              <View style={styles.navCardLeft}>
-                <Ionicons name="camera" size={20} color={Colors.accent} />
-                <Text style={styles.navCardLabel}>{t('photos')}</Text>
-              </View>
-              <View style={styles.navCardRight}>
-                <Text style={styles.navCardValue}>{doseLogs.filter(l => !!l.photoUri).length}</Text>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
-              </View>
-            </Pressable>
           </>
         )}
       </ScrollView>

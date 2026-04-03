@@ -208,6 +208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       requester: { id: c.requester.id, displayName: c.requester.displayName, timezone: c.requester.timezone },
       target: { id: c.target.id, displayName: c.target.displayName, timezone: c.target.timezone },
       isRequester: c.requesterId === req.session.userId,
+      role: c.requesterId === req.session.userId ? "viewer" : "owner",
     }));
     res.json(mapped);
   });
@@ -262,7 +263,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.useInviteCode(code, req.session.userId!);
       const conn = await storage.createConnection(req.session.userId!, invite.userId, nickname);
-      await storage.updateConnectionStatus(conn.id, "accepted");
       res.json(conn);
     } catch (err: any) {
       console.error("Accept invite error:", err.message);
@@ -279,8 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const conns = await storage.getConnections(myUserId);
         const hasAccess = conns.some(c =>
           c.status === "accepted" &&
-          (c.requesterId === myUserId && c.targetId === targetUserId ||
-           c.targetId === myUserId && c.requesterId === targetUserId)
+          c.requesterId === myUserId && c.targetId === targetUserId
         );
         if (!hasAccess) {
           return res.status(403).json({ message: "Not authorized to view this user's data" });
@@ -310,6 +309,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/nudges", requireAuth, async (req: Request, res: Response) => {
     try {
       const { toUserId, type } = req.body;
+      const allowedTypes = ["reminder", "praise", "heart", "time"];
+      if (!allowedTypes.includes(type)) {
+        return res.status(400).json({ message: "Invalid nudge type" });
+      }
       const conns = await storage.getConnections(req.session.userId!);
       const hasAccess = conns.some(c =>
         c.status === "accepted" &&
