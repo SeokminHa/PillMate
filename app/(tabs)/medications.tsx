@@ -8,6 +8,7 @@ import React, { useState, useRef, useCallback, useMemo } from "react";
 import Colors from "@/constants/colors";
 import { useMedications, Medication } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const CARD_HEIGHT = 90;
 const CARD_GAP = 12;
@@ -249,10 +250,18 @@ function DraggableList({ medications, reorderMedications }: {
 export default function MedicationsScreen() {
   const insets = useSafeAreaInsets();
   const { medications, reorderMedications } = useMedications();
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
+  const { user, logout } = useAuth();
   const [isReordering, setIsReordering] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+
+  const handleLogout = () => {
+    Alert.alert(t('logout'), '', [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('logout'), style: 'destructive', onPress: () => logout() },
+    ]);
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -329,6 +338,32 @@ export default function MedicationsScreen() {
               </View>
               <Text style={styles.emptyTitle}>{t('noMedsAdded')}</Text>
               <Text style={styles.emptySubtitle}>{t('tapToAdd')}</Text>
+            </View>
+          )}
+          ListFooterComponent={() => (
+            <View style={styles.settingsSection}>
+              {user && (
+                <View style={styles.profileRow}>
+                  <View style={styles.profileInfo}>
+                    <View style={styles.profileAvatar}>
+                      <Text style={styles.profileAvatarText}>{user.displayName.charAt(0)}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.profileName}>{user.displayName}</Text>
+                      <Text style={styles.profileUsername}>@{user.username}</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+              <Pressable style={styles.settingsItem} onPress={() => setLanguage(language === 'ko' ? 'en' : 'ko')}>
+                <Ionicons name="globe-outline" size={20} color={Colors.textSecondary} />
+                <Text style={styles.settingsItemText}>{t('language')}</Text>
+                <Text style={styles.settingsItemValue}>{language === 'ko' ? '한국어' : 'English'}</Text>
+              </Pressable>
+              <Pressable style={styles.settingsItem} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
+                <Text style={[styles.settingsItemText, { color: Colors.danger }]}>{t('logout')}</Text>
+              </Pressable>
             </View>
           )}
         />
@@ -509,5 +544,67 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: "center",
     paddingHorizontal: 40,
+  },
+  settingsSection: {
+    marginTop: 32,
+    gap: 2,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  profileRow: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  profileInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  profileAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary + "20",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileAvatarText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: Colors.primary,
+  },
+  profileName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    color: Colors.text,
+  },
+  profileUsername: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  settingsItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  settingsItemText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: Colors.text,
+    flex: 1,
+  },
+  settingsItemValue: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
 });

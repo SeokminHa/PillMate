@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
+import { apiRequest, getApiUrl } from '@/lib/query-client';
+import { fetch } from 'expo/fetch';
+import { useAuth } from './AuthContext';
 import { scheduleMedicationNotifications, cancelMedicationNotifications } from '@/lib/notifications';
 
 export type DosageUnit = 'tablet' | 'custom';
-
 export type MealTiming = 'before' | 'during' | 'after' | null;
 
 export interface TimeEntry {
@@ -78,6 +78,7 @@ interface MedicationContextValue {
   getStreak: () => number;
   getWeeklyData: () => { day: string; completed: number; total: number }[];
   reorderMedications: (fromIndex: number, toIndex: number) => Promise<void>;
+  refreshData: () => Promise<void>;
 }
 
 export interface ScheduleItem {
@@ -95,94 +96,125 @@ const MEDICATION_COLORS = [
   '#F59E0B', '#EF4444', '#10B981', '#6366F1',
 ];
 
-const STORAGE_KEYS = {
-  medications: '@pillmate_medications',
-  doseLogs: '@pillmate_dose_logs',
-};
-
 function getDateString(date: Date = new Date()): string {
   return date.toISOString().split('T')[0];
 }
 
+function mapServerMedication(med: any): Medication {
+  const timeEntries: TimeEntry[] = (med.timeEntries || []).map((t: any) => ({
+    time: t.time,
+    label: t.label || undefined,
+    mealTiming: t.mealTiming || null,
+  }));
+  return {
+    id: med.id,
+    name: med.name,
+    timesPerDay: timeEntries.length,
+    scheduleTimes: timeEntries.map((t: TimeEntry) => t.time),
+    timeEntries,
+    dosageAmount: med.dosageAmount || '1',
+    dosageUnit: (med.dosageUnit === 'tablet' ? 'tablet' : 'custom') as DosageUnit,
+    customUnit: med.customUnit || undefined,
+    memo: med.memo || undefined,
+    color: med.color || '#3B82F6',
+    createdAt: med.createdAt || new Date().toISOString(),
+  };
+}
+
+function mapServerDoseLog(log: any): DoseLog {
+  return {
+    id: log.id,
+    medicationId: log.medicationId,
+    scheduledTime: log.scheduledTime,
+    takenAt: log.takenAt || new Date().toISOString(),
+    photoUri: log.photoUri || '',
+    date: log.date,
+  };
+}
+
 export function MedicationProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseLogs, setDoseLogs] = useState<DoseLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (!user) {
+      setMedications([]);
+      setDoseLogs([]);
+      setIsLoading(false);
+      return;
+    }
     try {
-      const [medsJson, logsJson] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.medications),
-        AsyncStorage.getItem(STORAGE_KEYS.doseLogs),
+      setIsLoading(true);
+      const baseUrl = getApiUrl();
+      const [medsRes, logsRes] = await Promise.all([
+        fetch(new URL('/api/medications', baseUrl).toString(), { credentials: 'include' }),
+        fetch(new URL('/api/dose-logs', baseUrl).toString(), { credentials: 'include' }),
       ]);
-      if (medsJson) {
-        const parsed = JSON.parse(medsJson);
-        const migrated = parsed.map((m: any) => {
-          let unit = m.dosageUnit || 'tablet';
-          let customUnit = m.customUnit || '';
-          if (['pill', 'capsule'].includes(unit)) unit = 'tablet';
-          if (['gram', 'ml', 'drops', 'spoon'].includes(unit)) {
-            customUnit = unit === 'gram' ? 'g' : unit === 'ml' ? 'ml' : unit === 'drops' ? (m._lang === 'ko' ? '방울' : 'drops') : (m._lang === 'ko' ? '스푼' : 'spoon');
-            unit = 'custom';
-          }
-          return {
-            ...m,
-            timeEntries: m.timeEntries || m.scheduleTimes.map((t: string) => ({ time: t })),
-            dosageAmount: m.dosageAmount || '1',
-            dosageUnit: unit,
-            customUnit,
-            memo: m.memo || '',
-          };
-        });
-        setMedications(migrated);
+      if (medsRes.ok) {
+        const medsData = await medsRes.json();
+        setMedications(medsData.map(mapServerMedication));
       }
-      if (logsJson) setDoseLogs(JSON.parse(logsJson));
+      if (logsRes.ok) {
+        const logsData = await logsRes.json();
+        setDoseLogs(logsData.map(mapServerDoseLog));
+      }
     } catch (e) {
       console.error('Failed to load data:', e);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  const saveMedications = async (meds: Medication[]) => {
-    await AsyncStorage.setItem(STORAGE_KEYS.medications, JSON.stringify(meds));
-  };
-
-  const saveDoseLogs = async (logs: DoseLog[]) => {
-    await AsyncStorage.setItem(STORAGE_KEYS.doseLogs, JSON.stringify(logs));
-  };
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const addMedication = useCallback(async (med: Omit<Medication, 'id' | 'createdAt'>) => {
-    const newMed: Medication = {
-      ...med,
-      id: Crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [...medications, newMed];
-    setMedications(updated);
-    await saveMedications(updated);
+    const res = await apiRequest('POST', '/api/medications', {
+      name: med.name,
+      dosageAmount: med.dosageAmount,
+      dosageUnit: med.dosageUnit,
+      customUnit: med.customUnit || null,
+      memo: med.memo || null,
+      color: med.color,
+      sortOrder: medications.length,
+      timeEntries: med.timeEntries.map(t => ({
+        time: t.time,
+        label: t.label || null,
+        mealTiming: t.mealTiming || null,
+      })),
+    });
+    const newMed = mapServerMedication(await res.json());
+    setMedications(prev => [...prev, newMed]);
     scheduleMedicationNotifications(
-      newMed.id,
-      newMed.name,
-      newMed.scheduleTimes,
+      newMed.id, newMed.name, newMed.scheduleTimes,
       `${newMed.name} 복용할 시간이에요!`,
     ).catch(() => {});
   }, [medications]);
 
   const updateMedication = useCallback(async (id: string, updates: Partial<Medication>) => {
-    const updated = medications.map(m => m.id === id ? { ...m, ...updates } : m);
-    setMedications(updated);
-    await saveMedications(updated);
-    const updatedMed = updated.find(m => m.id === id);
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.dosageAmount !== undefined) payload.dosageAmount = updates.dosageAmount;
+    if (updates.dosageUnit !== undefined) payload.dosageUnit = updates.dosageUnit;
+    if (updates.customUnit !== undefined) payload.customUnit = updates.customUnit;
+    if (updates.memo !== undefined) payload.memo = updates.memo;
+    if (updates.color !== undefined) payload.color = updates.color;
+    if (updates.timeEntries) {
+      payload.timeEntries = updates.timeEntries.map(t => ({
+        time: t.time,
+        label: t.label || null,
+        mealTiming: t.mealTiming || null,
+      }));
+    }
+    await apiRequest('PUT', `/api/medications/${id}`, payload);
+    setMedications(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    const updatedMed = medications.find(m => m.id === id);
     if (updatedMed) {
       scheduleMedicationNotifications(
-        updatedMed.id,
-        updatedMed.name,
-        updatedMed.scheduleTimes,
+        updatedMed.id, updatedMed.name, updatedMed.scheduleTimes,
         `${updatedMed.name} 복용할 시간이에요!`,
       ).catch(() => {});
     }
@@ -190,47 +222,37 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
 
   const deleteMedication = useCallback(async (id: string) => {
     cancelMedicationNotifications(id).catch(() => {});
-    const updatedMeds = medications.filter(m => m.id !== id);
-    const updatedLogs = doseLogs.filter(l => l.medicationId !== id);
-    setMedications(updatedMeds);
-    setDoseLogs(updatedLogs);
-    await Promise.all([saveMedications(updatedMeds), saveDoseLogs(updatedLogs)]);
-  }, [medications, doseLogs]);
+    await apiRequest('DELETE', `/api/medications/${id}`);
+    setMedications(prev => prev.filter(m => m.id !== id));
+    setDoseLogs(prev => prev.filter(l => l.medicationId !== id));
+  }, []);
 
   const logDose = useCallback(async (medicationId: string, scheduledTime: string, photoUri: string) => {
-    const newLog: DoseLog = {
-      id: Crypto.randomUUID(),
+    const res = await apiRequest('POST', '/api/dose-logs', {
       medicationId,
       scheduledTime,
-      takenAt: new Date().toISOString(),
-      photoUri,
       date: getDateString(),
-    };
-    const updated = [...doseLogs, newLog];
-    setDoseLogs(updated);
-    await saveDoseLogs(updated);
-  }, [doseLogs]);
+      photoUri: photoUri || null,
+    });
+    const newLog = mapServerDoseLog(await res.json());
+    setDoseLogs(prev => [...prev, newLog]);
+  }, []);
 
   const undoDose = useCallback(async (logId: string) => {
-    const updated = doseLogs.filter(l => l.id !== logId);
-    setDoseLogs(updated);
-    await saveDoseLogs(updated);
-  }, [doseLogs]);
+    await apiRequest('DELETE', `/api/dose-logs/${logId}`);
+    setDoseLogs(prev => prev.filter(l => l.id !== logId));
+  }, []);
 
   const quickLogDose = useCallback(async (medicationId: string, scheduledTime: string): Promise<DoseLog> => {
-    const newLog: DoseLog = {
-      id: Crypto.randomUUID(),
+    const res = await apiRequest('POST', '/api/dose-logs', {
       medicationId,
       scheduledTime,
-      takenAt: new Date().toISOString(),
-      photoUri: '',
       date: getDateString(),
-    };
-    const updated = [...doseLogs, newLog];
-    setDoseLogs(updated);
-    await saveDoseLogs(updated);
+    });
+    const newLog = mapServerDoseLog(await res.json());
+    setDoseLogs(prev => [...prev, newLog]);
     return newLog;
-  }, [doseLogs]);
+  }, []);
 
   const isDuplicateDose = useCallback((medicationId: string, scheduledTime: string): boolean => {
     const today = getDateString();
@@ -251,7 +273,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const today = getDateString();
     const todayLogs = doseLogs.filter(l => l.date === today);
     const items: ScheduleItem[] = [];
-
     for (const med of medications) {
       for (const entry of med.timeEntries) {
         const log = todayLogs.find(l => l.medicationId === med.id && l.scheduledTime === entry.time);
@@ -264,7 +285,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-
     items.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
     return items;
   }, [medications, doseLogs]);
@@ -272,10 +292,7 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
   const getTodayScheduleByBlock = useCallback((): Record<TimeBlock, ScheduleItem[]> => {
     const schedule = getTodaySchedule();
     const blocks: Record<TimeBlock, ScheduleItem[]> = {
-      morning: [],
-      afternoon: [],
-      evening: [],
-      bedtime: [],
+      morning: [], afternoon: [], evening: [], bedtime: [],
     };
     for (const item of schedule) {
       const block = getTimeBlock(item.scheduledTime);
@@ -296,7 +313,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
       return new Date().getTime() - scheduled.getTime() > 60 * 60 * 1000;
     }).length;
     const pending = total - completed - missed;
-
     const blockOrder: TimeBlock[] = ['morning', 'afternoon', 'evening', 'bedtime'];
     const byBlock = getTodayScheduleByBlock();
     const blockSummaries = blockOrder
@@ -306,7 +322,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
         completed: byBlock[b].filter(s => s.taken).length,
         total: byBlock[b].length,
       }));
-
     return { completed, pending, missed, total, blockSummaries };
   }, [getTodaySchedule, getTodayScheduleByBlock]);
 
@@ -315,13 +330,11 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const now = new Date();
     let totalDoses = 0;
     let takenDoses = 0;
-
     for (let i = 0; i < days; i++) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = getDateString(date);
       const dayLogs = doseLogs.filter(l => l.date === dateStr);
-
       for (const med of medications) {
         const medCreatedDate = getDateString(new Date(med.createdAt));
         if (dateStr >= medCreatedDate) {
@@ -331,7 +344,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-
     return totalDoses === 0 ? 0 : Math.round((takenDoses / totalDoses) * 100);
   }, [medications, doseLogs]);
 
@@ -339,34 +351,24 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     if (medications.length === 0) return 0;
     let streak = 0;
     const now = new Date();
-
     for (let i = 0; i < 365; i++) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = getDateString(date);
       const dayLogs = doseLogs.filter(l => l.date === dateStr);
       let allTaken = true;
-
       for (const med of medications) {
         const medCreatedDate = getDateString(new Date(med.createdAt));
         if (dateStr >= medCreatedDate) {
           const medLogs = dayLogs.filter(l => l.medicationId === med.id);
-          if (medLogs.length < med.timesPerDay) {
-            allTaken = false;
-            break;
-          }
+          if (medLogs.length < med.timesPerDay) { allTaken = false; break; }
         }
       }
-
       if (i === 0 && !allTaken) continue;
-
       if (allTaken && medications.some(m => dateStr >= getDateString(new Date(m.createdAt)))) {
         streak++;
-      } else if (i > 0) {
-        break;
-      }
+      } else if (i > 0) { break; }
     }
-
     return streak;
   }, [medications, doseLogs]);
 
@@ -374,7 +376,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
     const data: { day: string; completed: number; total: number }[] = [];
-
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
@@ -382,7 +383,6 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
       const dayLogs = doseLogs.filter(l => l.date === dateStr);
       let total = 0;
       let completed = 0;
-
       for (const med of medications) {
         const medCreatedDate = getDateString(new Date(med.createdAt));
         if (dateStr >= medCreatedDate) {
@@ -390,10 +390,8 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
           completed += Math.min(dayLogs.filter(l => l.medicationId === med.id).length, med.timesPerDay);
         }
       }
-
       data.push({ day: days[date.getDay()], completed, total });
     }
-
     return data;
   }, [medications, doseLogs]);
 
@@ -402,30 +400,25 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     const [moved] = updated.splice(fromIndex, 1);
     updated.splice(toIndex, 0, moved);
     setMedications(updated);
-    await saveMedications(updated);
+    try {
+      await apiRequest('PUT', '/api/medications/reorder', { orderedIds: updated.map(m => m.id) });
+    } catch (e) {
+      console.error('Reorder failed:', e);
+    }
   }, [medications]);
 
   const value = useMemo(() => ({
-    medications,
-    doseLogs,
-    isLoading,
-    addMedication,
-    updateMedication,
-    deleteMedication,
-    logDose,
-    undoDose,
-    quickLogDose,
-    isDuplicateDose,
-    getLastTakenTime,
-    getTodayLogs,
-    getTodaySchedule,
-    getTodayScheduleByBlock,
-    getCaregiverSummary,
-    getCompletionRate,
-    getStreak,
-    getWeeklyData,
-    reorderMedications,
-  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication, logDose, undoDose, quickLogDose, isDuplicateDose, getLastTakenTime, getTodayLogs, getTodaySchedule, getTodayScheduleByBlock, getCaregiverSummary, getCompletionRate, getStreak, getWeeklyData, reorderMedications]);
+    medications, doseLogs, isLoading,
+    addMedication, updateMedication, deleteMedication,
+    logDose, undoDose, quickLogDose,
+    isDuplicateDose, getLastTakenTime, getTodayLogs,
+    getTodaySchedule, getTodayScheduleByBlock, getCaregiverSummary,
+    getCompletionRate, getStreak, getWeeklyData, reorderMedications,
+    refreshData: loadData,
+  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication,
+    logDose, undoDose, quickLogDose, isDuplicateDose, getLastTakenTime, getTodayLogs,
+    getTodaySchedule, getTodayScheduleByBlock, getCaregiverSummary,
+    getCompletionRate, getStreak, getWeeklyData, reorderMedications, loadData]);
 
   return (
     <MedicationContext.Provider value={value}>
@@ -436,9 +429,7 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
 
 export function useMedications() {
   const context = useContext(MedicationContext);
-  if (!context) {
-    throw new Error('useMedications must be used within a MedicationProvider');
-  }
+  if (!context) throw new Error('useMedications must be used within a MedicationProvider');
   return context;
 }
 

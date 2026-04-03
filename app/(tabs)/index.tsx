@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Colors from "@/constants/colors";
 import { useMedications, ScheduleItem, TimeBlock, getDoseStatus, DoseStatus } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const BLOCK_ICONS: Record<TimeBlock, keyof typeof Ionicons.glyphMap> = {
   morning: "sunny",
@@ -98,8 +99,8 @@ function MedicationCard({ item, onQuickLog, isDuplicate }: { item: ScheduleItem;
 
   const statusLabel = status === 'duplicate' ? t('statusDuplicate')
     : status === 'taken' ? t('statusTaken')
-    : status === 'overdue' ? t('statusOverdue')
-    : t('statusPending');
+    : status === 'overdue' ? t('missedRecovery')
+    : t('notTakenYet');
 
   return (
     <Pressable
@@ -226,6 +227,7 @@ export default function TodayScreen() {
   const insets = useSafeAreaInsets();
   const { medications, doseLogs, getTodaySchedule, getTodayScheduleByBlock, quickLogDose, undoDose, isDuplicateDose } = useMedications();
   const { t, language } = useLanguage();
+  const { user } = useAuth();
   const [undoState, setUndoState] = useState<UndoState | null>(null);
 
   const schedule = getTodaySchedule();
@@ -235,7 +237,8 @@ export default function TodayScreen() {
   const progress = total === 0 ? 0 : Math.round((taken / total) * 100);
 
   const now = new Date();
-  const greeting = now.getHours() < 12 ? t('goodMorning') : now.getHours() < 18 ? t('goodAfternoon') : t('goodEvening');
+  const baseGreeting = now.getHours() < 12 ? t('goodMorning') : now.getHours() < 18 ? t('goodAfternoon') : t('goodEvening');
+  const greeting = user ? `${baseGreeting}, ${user.displayName}` : baseGreeting;
   const dateLocale = language === 'ko' ? 'ko-KR' : 'en-US';
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -314,36 +317,41 @@ export default function TodayScreen() {
             showsVerticalScrollIndicator={false}
             scrollEnabled={!!activeBlocks.length}
             ListHeaderComponent={() => (
-              <View style={styles.progressCard}>
-                <View style={styles.progressInfo}>
-                  <Text style={styles.progressLabel}>{t('overallProgress')}</Text>
-                  <Text style={styles.progressValue}>
-                    <Text style={styles.progressHighlight}>{taken}</Text>
-                    <Text style={styles.progressTotal}> / {total}</Text>
-                  </Text>
-                </View>
-                <View style={styles.progressBarContainer}>
-                  <View style={styles.progressBarBg}>
-                    <View style={[
-                      styles.progressBarFill,
-                      { width: `${progress}%` as any },
-                      progress === 100 && { backgroundColor: Colors.success },
-                    ]} />
+              <>
+                {progress === 100 ? (
+                  <View style={styles.successCard}>
+                    <View style={styles.successIconContainer}>
+                      <Ionicons name="checkmark-circle" size={56} color={Colors.success} />
+                    </View>
+                    <Text style={styles.successTitle}>{t('allDoneSuccess')}</Text>
+                    <View style={styles.successProgressRow}>
+                      <Text style={styles.successCount}>{taken}/{total}</Text>
+                      <Text style={styles.successLabel}>{t('caregiverCompleted')}</Text>
+                    </View>
                   </View>
-                  <Text style={[
-                    styles.progressPercent,
-                    progress === 100 && { color: Colors.success },
-                  ]}>
-                    {progress}%
-                  </Text>
-                </View>
-                {progress === 100 && (
-                  <View style={styles.allDoneBadge}>
-                    <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                    <Text style={styles.allDoneText}>{t('allDoneToday')}</Text>
+                ) : (
+                  <View style={styles.progressCard}>
+                    <View style={styles.progressInfo}>
+                      <Text style={styles.progressLabel}>{t('overallProgress')}</Text>
+                      <Text style={styles.progressValue}>
+                        <Text style={styles.progressHighlight}>{taken}</Text>
+                        <Text style={styles.progressTotal}> / {total}</Text>
+                      </Text>
+                    </View>
+                    <View style={styles.progressBarContainer}>
+                      <View style={styles.progressBarBg}>
+                        <View style={[
+                          styles.progressBarFill,
+                          { width: `${progress}%` as any },
+                        ]} />
+                      </View>
+                      <Text style={styles.progressPercent}>
+                        {progress}%
+                      </Text>
+                    </View>
                   </View>
                 )}
-              </View>
+              </>
             )}
             renderItem={({ item: block, index }) => (
               <TimeBlockSection
@@ -487,16 +495,41 @@ const styles = StyleSheet.create({
     minWidth: 40,
     textAlign: "right",
   },
-  allDoneBadge: {
+  successCard: {
+    backgroundColor: Colors.successBg,
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.success + "30",
+    marginBottom: 4,
+    gap: 12,
+  },
+  successIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.success + "15",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: Colors.success,
+    textAlign: "center",
+  },
+  successProgressRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    gap: 8,
   },
-  allDoneText: {
+  successCount: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    color: Colors.success,
+  },
+  successLabel: {
     fontFamily: "Inter_500Medium",
     fontSize: 14,
     color: Colors.success,

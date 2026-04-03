@@ -1,0 +1,437 @@
+We already have an early medication tracking app with these existing features:
+- medication name
+- dosage
+- time block options such as morning / afternoon / evening
+- meal timing options such as before meal / with meal / after meal
+- a calendar/history style adherence check view
+- a basic family summary section exists, but it is NOT a real sharing/viewing system yet
+
+I want to change the product direction and improve the app significantly.
+
+Please do NOT prioritize medication education, drug interaction explanation, or medical warning content for now.
+That part is not the current priority.
+
+The main goal of this app should now be:
+help users clearly know whether they already took a medication, whether they still need to take it, and prevent confusion or accidental duplicate check-ins.
+A second major goal is to support lightweight caregiver/family sharing with explicit consent.
+
+Please refactor and expand the current app with the following requirements.
+
+==================================================
+1. PRODUCT DIRECTION
+==================================================
+
+This app should feel like a “medication clarity and confidence” app, not just a medication log.
+
+Core user problems:
+1. “Did I already take this medication or not?”
+2. “What do I still need to take today?”
+3. “I live far from my parents and want to check whether they are keeping up with their medications.”
+4. “I do not want the family-sharing experience to feel invasive or like surveillance.”
+
+Please make design and feature decisions around these problems.
+
+==================================================
+2. HOME SCREEN / TODAY DASHBOARD REWORK
+==================================================
+
+The current app feels too much like a medication list.
+Please redesign the main screen so it feels like a “Today Dashboard.”
+
+Requirements:
+- Group medications by time block such as Morning, Afternoon, Evening, Bedtime
+- Keep meal timing labels visible (before meal / with meal / after meal)
+- Each medication item/card must clearly show its current status for today
+
+Each medication should visibly show one of these states:
+- Not taken yet
+- Taken
+- Missed / overdue
+- Duplicate risk if user tries to mark again
+
+This must be obvious at a glance.
+
+Please use strong status visuals:
+- Green = taken
+- Gray = not taken yet
+- Yellow/Red = warning or missed
+- Include text labels too, not color alone
+
+Please add a dashboard summary at the top such as:
+- “3 of 6 medications completed today”
+- progress bar or simple completion indicator
+
+The user should be able to open the app and understand today’s situation within 3 seconds.
+
+==================================================
+3. ONE-TAP CHECK-IN + UNDO
+==================================================
+
+Please make medication check-in extremely simple.
+
+Requirements:
+- User can mark a medication as taken with one tap
+- Save the timestamp of that check-in
+- Immediately show the updated status in the UI
+
+Very important:
+- Add Undo functionality after check-in
+- If the user taps by mistake, they should be able to revert easily
+- Use a snackbar/toast with an Undo button, or another simple pattern
+
+This is especially important for older users.
+
+==================================================
+4. DUPLICATE-DOSE CONFUSION PREVENTION
+==================================================
+
+This is one of the main product differentiators.
+
+Please add logic so that if the user tries to mark the same medication as taken again in the same time block, the app should not silently accept it.
+
+Instead:
+- Show a clear warning message such as:
+  “You already marked this medication as taken this morning.”
+- Show the last marked time
+- Optionally allow a manual override, but only after warning
+
+Also, on each medication card, clearly show:
+- Last taken time
+- Whether it has already been taken in the current time block
+
+The app should actively reduce ambiguity.
+
+==================================================
+5. CALENDAR / HISTORY DEMOTION
+==================================================
+
+We already have a calendar/history style feature.
+Please keep it, but do NOT let it remain the primary experience.
+
+Requirements:
+- Move calendar/history into a separate History or Progress tab
+- It should be for reviewing past adherence
+- It should not be the main focus of the first screen
+
+The main focus should be:
+“What do I need to do today?”
+not
+“What did I do in the past?”
+
+==================================================
+6. ACCESSIBILITY / SENIOR-FRIENDLY UX
+==================================================
+
+Please improve the UI for accessibility and older users.
+
+Requirements:
+- Large touch targets (at least around 48x48px)
+- High contrast text
+- Clear spacing between items
+- Avoid clutter
+- Mobile-first responsive layout
+- Make interactions feel satisfying but not over-animated
+
+Please prefer clarity over stylish complexity.
+
+==================================================
+7. REAL CAREGIVER / FAMILY SHARING SYSTEM
+==================================================
+
+Right now, the app has only a family summary section, but there is no real system where one user can actually view another user’s medication status.
+
+Please implement a real user-to-user sharing system.
+
+Important principle:
+This must be consent-based.
+No one should be able to view another person’s medication status unless that person explicitly allows it.
+
+Please build the sharing system with these rules:
+
+A. Roles
+- Primary user: the person whose medication tracking data is being viewed
+- Caregiver/family/friend viewer: the person who is allowed to view summary information
+
+B. Connection model
+- Support actual user-to-user connection
+- One viewer should be able to connect to multiple people
+  Example:
+  - child can connect to mother
+  - child can connect to father
+- These should be separate connections, not one big group by default
+
+C. Consent flow
+- The primary user must explicitly approve the connection
+- The sharing system should feel like:
+  “I allow this person to view my medication status”
+- Do NOT make the system automatically share data
+
+D. Invite system
+Please build one of these simple patterns:
+- invite link
+or
+- short invite code
+
+Preferred flow:
+1. Primary user opens “Share with family/caregiver”
+2. App generates invite link or code
+3. They send it to the other person
+4. The other person accepts
+5. Connection becomes active
+
+This is better than manual user ID entry.
+
+E. Data visibility
+For MVP, do NOT expose too much detail.
+The caregiver/friend view should show summary-level information first, such as:
+- Morning medications completed
+- Evening medications pending
+- Missed today
+- Today completion percentage
+
+Optionally, if easy, allow a “detailed mode” later, but summary mode should be default.
+
+F. Manage connections
+Please add a simple connection management UI:
+- View connected people
+- Remove/disconnect a person
+- See whether a connection request is pending / accepted
+
+==================================================
+8. MULTI-PERSON SUPPORT
+==================================================
+
+Please support adding more than one connected person.
+
+Example:
+- I want to view my mother’s status
+- I also want to view my father’s status
+- I may later want to view one friend’s or another family member’s status too
+
+Requirements:
+- One caregiver/viewer can have multiple separate connections
+- Each connection should have its own card or profile in the viewer dashboard
+- Example labels:
+  - Mom
+  - Dad
+  - Grandma
+  - Friend
+
+This should NOT require group creation for MVP.
+Simple multiple separate connections are enough.
+
+==================================================
+9. VIEWER DASHBOARD
+==================================================
+
+Please create a proper viewer/caregiver dashboard.
+
+Example behavior:
+- I open the app
+- I can switch between:
+  - My medications
+  - People I am connected to
+
+For connected people, show cards like:
+- Mom — Morning complete, Evening pending
+- Dad — Missed one medication today
+- Grandma — All done today
+
+The dashboard should make it easy to quickly check on multiple people without opening too many screens.
+
+==================================================
+10. OPTIONAL LIGHTWEIGHT SUPPORTIVE INTERACTIONS
+==================================================
+
+If it is not too much work, add a very lightweight supportive interaction system.
+
+Example:
+- caregiver can send a small nudge or cheer
+- simple emoji-only or short preset messages
+- examples:
+  - ❤️
+  - 💊
+  - “Time for your meds”
+  - “Great job today”
+
+Important:
+- Keep this lightweight
+- Do not make it chat-heavy
+- Do not make it feel like nagging
+
+If this is too much for now, implement the real sharing/viewing system first and leave this as optional.
+
+==================================================
+11. DATA / BACKEND REQUIREMENTS
+==================================================
+
+Please update the data model and backend as needed to support:
+- users
+- medications
+- check-ins
+- time blocks
+- connection requests
+- accepted connections
+- caregiver/viewer relationships
+- multiple connected people per user
+
+Please create sample seeded demo data for:
+- one main user
+- mother account
+- father account
+- example medications and statuses
+
+That way the sharing/viewing system can be demoed immediately.
+
+==================================================
+12. UX COPY / LANGUAGE
+==================================================
+
+Use very plain, human-friendly language in the interface.
+Examples:
+- “Not taken yet”
+- “Taken this morning”
+- “Already marked as taken”
+- “Missed today”
+- “Share with family”
+- “Allow this person to view my status”
+
+Avoid technical wording.
+
+==================================================
+13. DELIVERABLES
+==================================================
+
+Please provide:
+1. Updated working app structure
+2. UI changes for the new Today Dashboard
+3. Real user-to-user sharing/viewing flow
+4. Multiple connected person support
+5. Connection management UI
+6. Seeded demo data
+7. Short explanation of the updated architecture and key files
+
+Please prioritize functional clarity over extra features.
+The most important outcomes are:
+- clearer daily status
+- easier check-in
+- undo
+- duplicate prevention
+- real consent-based sharing
+- support for viewing multiple people separately
+
+
+==================================================
+14. TIMEZONE HANDLING (IMPORTANT)
+==================================================
+
+The app must support users in different timezones.
+
+Requirements:
+- Each user must have a timezone setting
+- All medication status (morning, evening, etc.) must be interpreted based on the primary user’s local timezone
+- When a caregiver views another user:
+  - The displayed status must be based on the primary user’s timezone, not the viewer’s
+
+Example:
+“Mom (KST) — Morning completed”
+
+Do NOT mix timezones implicitly.
+
+==================================================
+15. SUCCESS / COMPLETION STATE
+==================================================
+
+When all medications for the day are completed:
+
+- Do NOT just show a completed list
+- Show a clear, positive success state
+
+Example:
+“오늘 약을 모두 잘 챙겨 드셨습니다 👍”
+
+Requirements:
+- Large, prominent message
+- Positive tone
+- Reduce visual clutter
+- Emphasize completion and confidence
+
+==================================================
+16. GUILT-FREE UI DESIGN
+==================================================
+
+Avoid UI elements that create guilt, stress, or a sense of failure.
+
+Do NOT use:
+- sad faces
+- angry icons
+- overly alarming red states for normal missed doses
+
+Instead:
+- use neutral or supportive language
+- focus on current state, not judgment
+
+Examples:
+- “아직 복용하지 않았습니다”
+- “복용 시간이 지났습니다 (지금 복용 가능)”
+
+The app should feel supportive, not critical.
+
+==================================================
+17. LOW-FRICTION INVITE FLOW
+==================================================
+
+The caregiver connection process must be as simple as possible.
+
+Requirements:
+- Use invite links or short codes
+- When the receiver opens the link:
+  - minimize required input
+  - avoid complex signup flows
+
+For MVP:
+- allow minimal identification (e.g., name only)
+- allow immediate accept/reject of connection
+
+Full authentication systems can be expanded later.
+
+==================================================
+18. CONTEXT CLARITY IN CAREGIVER VIEW
+==================================================
+
+In caregiver dashboards, always clarify whose timezone and context is being shown.
+
+Example:
+- “Mom (KST) — Morning completed”
+- “Dad (EST) — Evening pending”
+
+Never show ambiguous labels like “Morning completed” without context.
+
+==================================================
+19. EMPTY / NO-ACTION STATES
+==================================================
+
+When there is nothing left to do:
+- do not show an empty list
+- show a clear, calm completion state
+
+Example:
+“All medications completed for today”
+
+This reinforces confidence and reduces anxiety.
+
+==================================================
+20. MISSED DOSE HANDLING
+==================================================
+
+Missed doses should not be treated as failures.
+
+Requirements:
+- Avoid harsh warnings
+- Provide recovery-friendly messaging
+
+Example:
+- “복용 시간이 지났습니다”
+- “지금 복용하셔도 괜찮습니다”
+
+Focus on what the user can do now, not what they failed to do.
