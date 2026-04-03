@@ -24,6 +24,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>{t('history')}</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="caregiver">
+        <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
+        <Label>{t('caregiverView')}</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -89,6 +93,15 @@ function ClassicTabLayout() {
           title: t('history'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bar-chart" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="caregiver"
+        options={{
+          title: t('caregiverView'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people" size={size} color={color} />
           ),
         }}
       />

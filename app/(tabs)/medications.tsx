@@ -266,20 +266,6 @@ export default function MedicationsScreen() {
           )}
         </View>
         <View style={styles.headerButtons}>
-          {!isReordering && (
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/drug-info");
-              }}
-              style={({ pressed }) => [
-                styles.infoButton,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <Ionicons name="flask-outline" size={20} color={Colors.primary} />
-            </Pressable>
-          )}
           {medications.length > 1 && (
             <Pressable
               onPress={() => {
@@ -399,16 +385,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: "center",
     justifyContent: "center",
-  },
-  infoButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryBg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
   },
   reorderButton: {
     width: 44,

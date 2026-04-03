@@ -1,0 +1,73 @@
+We already have a draft medication tracking app with:
+- medication name
+- dosage
+- time inputs
+- options like morning / afternoon / before meal / after meal
+- a calendar view for tracking adherence
+
+I want to change the product direction.
+
+Please stop prioritizing medication education, drug interaction explanations, or warning information for now.
+Do not focus on building a medication knowledge system.
+
+Instead, refactor the app into a “medication clarity and confidence” app.
+
+Main goal:
+Help users instantly know:
+1. whether they already took a medication in the current time block,
+2. whether they still need to take it,
+3. whether they may be trying to take it twice by mistake.
+
+Please update the existing app with the following priorities:
+
+1. Make the home screen a “Today Dashboard”
+- Show medications grouped by time block such as Morning, Afternoon, Evening, Bedtime
+- Keep before-meal / after-meal labels visible
+- Each medication card should show a very clear current status:
+  - Not taken yet
+  - Taken
+  - Missed / overdue
+  - Duplicate risk
+
+2. Add strong visual status design
+- Green for taken
+- Gray for not taken yet
+- Yellow or red for warning states
+- The user should understand the state just by looking
+
+3. Add one-tap check-in with Undo
+- Tapping marks a medication as taken immediately
+- Show a snackbar/toast with Undo for a few seconds
+- This is especially important for accidental taps
+
+4. Add duplicate-dose protection
+- If the user tries to mark the same medication again in the same time block, do not just allow it silently
+- Show a warning message such as:
+  “You already marked this medication as taken this morning.”
+- Optionally allow override, but only after warning
+
+5. Show “last taken” clearly
+- Each medication card should show the last taken time or last marked status
+- This is important for reducing confusion
+
+6. Demote the calendar view
+- Keep the calendar, but move it to a history/progress tab
+- It should not be the primary screen
+- The primary screen should focus on today’s decisions and clarity
+
+7. Add a lightweight caregiver/family view
+- Keep it simple
+- Show summary only, such as:
+  - Morning medications completed
+  - Evening medications pending
+  - Missed today
+- Do not show an overwhelming amount of detail
+- This should feel like reassurance, not surveillance
+
+8. Improve accessibility
+- Large buttons
+- High contrast text
+- Mobile-friendly layout
+- Clear spacing for older users
+
+Please keep the existing medication/time/meal data model where possible, but redesign the UX around status clarity and preventing confusion.

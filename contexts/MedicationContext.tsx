@@ -36,6 +36,28 @@ export interface DoseLog {
   date: string;
 }
 
+export type TimeBlock = 'morning' | 'afternoon' | 'evening' | 'bedtime';
+
+export function getTimeBlock(time: string): TimeBlock {
+  const hour = parseInt(time.split(":")[0], 10);
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  if (hour < 21) return 'evening';
+  return 'bedtime';
+}
+
+export type DoseStatus = 'pending' | 'taken' | 'overdue' | 'duplicate';
+
+export function getDoseStatus(scheduledTime: string, taken: boolean): DoseStatus {
+  if (taken) return 'taken';
+  const now = new Date();
+  const [h, m] = scheduledTime.split(":").map(Number);
+  const scheduled = new Date();
+  scheduled.setHours(h, m, 0, 0);
+  if (now.getTime() - scheduled.getTime() > 60 * 60 * 1000) return 'overdue';
+  return 'pending';
+}
+
 interface MedicationContextValue {
   medications: Medication[];
   doseLogs: DoseLog[];
@@ -44,8 +66,14 @@ interface MedicationContextValue {
   updateMedication: (id: string, med: Partial<Medication>) => Promise<void>;
   deleteMedication: (id: string) => Promise<void>;
   logDose: (medicationId: string, scheduledTime: string, photoUri: string) => Promise<void>;
+  undoDose: (logId: string) => Promise<void>;
+  quickLogDose: (medicationId: string, scheduledTime: string) => Promise<DoseLog>;
+  isDuplicateDose: (medicationId: string, scheduledTime: string) => boolean;
+  getLastTakenTime: (medicationId: string) => string | null;
   getTodayLogs: () => DoseLog[];
   getTodaySchedule: () => ScheduleItem[];
+  getTodayScheduleByBlock: () => Record<TimeBlock, ScheduleItem[]>;
+  getCaregiverSummary: () => { completed: number; pending: number; missed: number; total: number; blockSummaries: { block: TimeBlock; completed: number; total: number }[] };
   getCompletionRate: (days: number) => number;
   getStreak: () => number;
   getWeeklyData: () => { day: string; completed: number; total: number }[];
@@ -183,6 +211,37 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     await saveDoseLogs(updated);
   }, [doseLogs]);
 
+  const undoDose = useCallback(async (logId: string) => {
+    const updated = doseLogs.filter(l => l.id !== logId);
+    setDoseLogs(updated);
+    await saveDoseLogs(updated);
+  }, [doseLogs]);
+
+  const quickLogDose = useCallback(async (medicationId: string, scheduledTime: string): Promise<DoseLog> => {
+    const newLog: DoseLog = {
+      id: Crypto.randomUUID(),
+      medicationId,
+      scheduledTime,
+      takenAt: new Date().toISOString(),
+      photoUri: '',
+      date: getDateString(),
+    };
+    const updated = [...doseLogs, newLog];
+    setDoseLogs(updated);
+    await saveDoseLogs(updated);
+    return newLog;
+  }, [doseLogs]);
+
+  const isDuplicateDose = useCallback((medicationId: string, scheduledTime: string): boolean => {
+    const today = getDateString();
+    return doseLogs.some(l => l.date === today && l.medicationId === medicationId && l.scheduledTime === scheduledTime);
+  }, [doseLogs]);
+
+  const getLastTakenTime = useCallback((medicationId: string): string | null => {
+    const medLogs = doseLogs.filter(l => l.medicationId === medicationId).sort((a, b) => b.takenAt.localeCompare(a.takenAt));
+    return medLogs.length > 0 ? medLogs[0].takenAt : null;
+  }, [doseLogs]);
+
   const getTodayLogs = useCallback(() => {
     const today = getDateString();
     return doseLogs.filter(l => l.date === today);
@@ -209,6 +268,47 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     items.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
     return items;
   }, [medications, doseLogs]);
+
+  const getTodayScheduleByBlock = useCallback((): Record<TimeBlock, ScheduleItem[]> => {
+    const schedule = getTodaySchedule();
+    const blocks: Record<TimeBlock, ScheduleItem[]> = {
+      morning: [],
+      afternoon: [],
+      evening: [],
+      bedtime: [],
+    };
+    for (const item of schedule) {
+      const block = getTimeBlock(item.scheduledTime);
+      blocks[block].push(item);
+    }
+    return blocks;
+  }, [getTodaySchedule]);
+
+  const getCaregiverSummary = useCallback(() => {
+    const schedule = getTodaySchedule();
+    const completed = schedule.filter(s => s.taken).length;
+    const total = schedule.length;
+    const missed = schedule.filter(s => {
+      if (s.taken) return false;
+      const [h, m] = s.scheduledTime.split(":").map(Number);
+      const scheduled = new Date();
+      scheduled.setHours(h, m, 0, 0);
+      return new Date().getTime() - scheduled.getTime() > 60 * 60 * 1000;
+    }).length;
+    const pending = total - completed - missed;
+
+    const blockOrder: TimeBlock[] = ['morning', 'afternoon', 'evening', 'bedtime'];
+    const byBlock = getTodayScheduleByBlock();
+    const blockSummaries = blockOrder
+      .filter(b => byBlock[b].length > 0)
+      .map(b => ({
+        block: b,
+        completed: byBlock[b].filter(s => s.taken).length,
+        total: byBlock[b].length,
+      }));
+
+    return { completed, pending, missed, total, blockSummaries };
+  }, [getTodaySchedule, getTodayScheduleByBlock]);
 
   const getCompletionRate = useCallback((days: number): number => {
     if (medications.length === 0) return 0;
@@ -313,13 +413,19 @@ export function MedicationProvider({ children }: { children: ReactNode }) {
     updateMedication,
     deleteMedication,
     logDose,
+    undoDose,
+    quickLogDose,
+    isDuplicateDose,
+    getLastTakenTime,
     getTodayLogs,
     getTodaySchedule,
+    getTodayScheduleByBlock,
+    getCaregiverSummary,
     getCompletionRate,
     getStreak,
     getWeeklyData,
     reorderMedications,
-  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication, logDose, getTodayLogs, getTodaySchedule, getCompletionRate, getStreak, getWeeklyData, reorderMedications]);
+  }), [medications, doseLogs, isLoading, addMedication, updateMedication, deleteMedication, logDose, undoDose, quickLogDose, isDuplicateDose, getLastTakenTime, getTodayLogs, getTodaySchedule, getTodayScheduleByBlock, getCaregiverSummary, getCompletionRate, getStreak, getWeeklyData, reorderMedications]);
 
   return (
     <MedicationContext.Provider value={value}>
