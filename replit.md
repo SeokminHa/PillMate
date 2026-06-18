@@ -23,7 +23,7 @@ Preferred communication style: Simple, everyday language.
   - `app/(tabs)/index.tsx` — Today Dashboard with time-block grouping (Morning/Afternoon/Evening/Bedtime), one-tap check-in with undo snackbar, duplicate-dose protection, visual status indicators (green=taken, gray=pending, yellow=overdue, red=duplicate), "last taken" timestamps, guilt-free messaging, and 100% completion success card
   - `app/(tabs)/medications.tsx` — List of all medications with delete, edit, drag-to-reorder, plus a profile/settings footer showing user info, language toggle, and logout
   - `app/(tabs)/history.tsx` — Statistics (streak, weekly chart, completion rates), link to monthly calendar (photo archive removed for MVP)
-  - `app/(tabs)/caregiver.tsx` — Directional consent-based sharing ("함께 보기" / "Together"): invite code generation, pending approval requests, "People I can view" with priority sorting (missed first), "People who can view me" management, preset nudge system (💊👍❤️⏰), rejected/pending state visibility
+  - `app/(tabs)/caregiver.tsx` — Username/ID-based bidirectional sharing ("함께 보기" / "Together"): each user's shareable ID is their username (My ID card with copy). Add a friend by entering their username → sends a connection request. Recipient sees incoming requests (accept/reject); sender sees outgoing pending (cancel). Once accepted, sharing is BIDIRECTIONAL — both friends see each other's per-pill list + status (taken/pending/missed), sorted missed-first. Each pill row has a contextual message button: taken → praise ("good job"), not-taken → reminder ("don't forget"), sent with the medication name. A "Messages received" section shows incoming nudges. Error/success feedback uses an in-app toast (web-safe; `Alert.alert` is unreliable on RN Web)
   - `app/add-medication.tsx` — Form sheet modal for adding new medications (name, dosage, timing, color)
   - `app/take-photo.tsx` — Camera modal for photo verification when logging a dose
 
@@ -35,11 +35,11 @@ Preferred communication style: Simple, everyday language.
   - Auth: POST `/api/auth/register`, POST `/api/auth/login`, POST `/api/auth/logout`, GET `/api/auth/me`, PUT `/api/auth/profile`
   - Medications: GET/POST `/api/medications`, PUT/DELETE `/api/medications/:id`, PUT `/api/medications/reorder`
   - Dose logs: GET/POST `/api/dose-logs`, DELETE `/api/dose-logs/:id`
-  - Connections: GET `/api/connections`, POST `/api/connections/respond`, DELETE `/api/connections/:id`
-  - Invites: POST `/api/invites`, POST `/api/invites/accept`
-  - Nudges: GET `/api/nudges`, POST `/api/nudges`, PUT `/api/nudges/:id/read`
+  - Connections: GET `/api/connections`, POST `/api/connections/request` (by username), POST `/api/connections/respond`, DELETE `/api/connections/:id`
+  - Invites (legacy, unused by UI): POST `/api/invites`, POST `/api/invites/accept`
+  - Nudges: GET `/api/nudges`, POST `/api/nudges` (accepts `medicationName` + `message` for per-pill context), PUT `/api/nudges/:id/read`
   - Summaries: GET `/api/summary/:userId`
-- **Authorization**: All mutation endpoints verify resource ownership. Directional sharing: `requesterId` = viewer, `targetId` = owner. Summaries only accessible if viewer has accepted connection. Nudge types restricted to preset list (reminder, praise, heart, time). Invite code acceptance creates pending connection requiring owner approval.
+- **Authorization**: All mutation endpoints verify resource ownership. Connections are stored with `requesterId` (initiator) and `targetId` (receiver), but once `accepted` they grant **bidirectional** access: `/api/summary/:userId` and `POST /api/nudges` are permitted if an accepted connection exists in *either* direction. Pending requests require the `targetId` user to accept. Nudge types restricted to preset list (reminder, praise, heart, time); `message` truncated to 200 chars and `medicationName` to 100.
 - **Storage**: `server/storage.ts` — `DatabaseStorage` class with full PostgreSQL CRUD via Drizzle ORM
 - **Seed data**: Demo accounts seeded on startup — `demo/1234`, `mom/1234`, `dad/1234` with pre-configured medications and connections
 

@@ -42,7 +42,7 @@ export interface IStorage {
   getInviteByCode(code: string): Promise<InviteCode | undefined>;
   useInviteCode(code: string, usedBy: string): Promise<InviteCode | undefined>;
 
-  createNudge(fromUserId: string, toUserId: string, type: string): Promise<Nudge>;
+  createNudge(fromUserId: string, toUserId: string, type: string, medicationName?: string | null, message?: string | null): Promise<Nudge>;
   getNudges(userId: string): Promise<(Nudge & { fromUser: User })[]>;
   markNudgeRead(id: string): Promise<void>;
 
@@ -53,7 +53,18 @@ export interface IStorage {
     missed: number;
     total: number;
     blockSummaries: { block: string; completed: number; total: number }[];
+    items: SummaryItem[];
   }>;
+}
+
+export interface SummaryItem {
+  medicationId: string;
+  name: string;
+  color: string;
+  scheduledTime: string;
+  block: string;
+  taken: boolean;
+  status: "taken" | "pending" | "missed";
 }
 
 function getTimeBlock(time: string): string {
@@ -301,11 +312,13 @@ export class DatabaseStorage implements IStorage {
     return invite;
   }
 
-  async createNudge(fromUserId: string, toUserId: string, type: string): Promise<Nudge> {
+  async createNudge(fromUserId: string, toUserId: string, type: string, medicationName?: string | null, message?: string | null): Promise<Nudge> {
     const [nudge] = await db.insert(nudges).values({
       fromUserId,
       toUserId,
       type,
+      medicationName: medicationName || null,
+      message: message || null,
     }).returning();
     return nudge;
   }
@@ -341,6 +354,7 @@ export class DatabaseStorage implements IStorage {
     missed: number;
     total: number;
     blockSummaries: { block: string; completed: number; total: number }[];
+    items: SummaryItem[];
   }> {
     const user = await this.getUserById(userId);
     if (!user) throw new Error("User not found");
@@ -352,6 +366,7 @@ export class DatabaseStorage implements IStorage {
     let missed = 0;
     let total = 0;
     const blockMap: Record<string, { completed: number; total: number }> = {};
+    const items: SummaryItem[] = [];
 
     const now = new Date();
 
@@ -363,19 +378,36 @@ export class DatabaseStorage implements IStorage {
         blockMap[block].total++;
 
         const taken = logs.some(l => l.medicationId === med.id && l.scheduledTime === entry.time);
+        let status: SummaryItem["status"];
         if (taken) {
           completed++;
           blockMap[block].completed++;
+          status = "taken";
         } else {
           const [h, m] = entry.time.split(":").map(Number);
           const scheduled = new Date();
           scheduled.setHours(h, m, 0, 0);
           if (now.getTime() - scheduled.getTime() > 60 * 60 * 1000) {
             missed++;
+            status = "missed";
+          } else {
+            status = "pending";
           }
         }
+
+        items.push({
+          medicationId: med.id,
+          name: med.name,
+          color: med.color,
+          scheduledTime: entry.time,
+          block,
+          taken,
+          status,
+        });
       }
     }
+
+    items.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
 
     const blockOrder = ["morning", "afternoon", "evening", "bedtime"];
     const blockSummaries = blockOrder
@@ -389,6 +421,7 @@ export class DatabaseStorage implements IStorage {
       missed,
       total,
       blockSummaries,
+      items,
     };
   }
 }

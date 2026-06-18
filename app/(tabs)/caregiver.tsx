@@ -11,27 +11,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
 
-const BLOCK_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  morning: "sunny",
-  afternoon: "partly-sunny",
-  evening: "moon",
-  bedtime: "bed",
-};
-
-const BLOCK_COLORS: Record<string, string> = {
-  morning: "#F59E0B",
-  afternoon: "#3B82F6",
-  evening: "#8B5CF6",
-  bedtime: "#6366F1",
-};
-
-const PRESET_NUDGES = [
-  { type: "reminder", emoji: "💊", labelKey: "nudgeReminder" as const },
-  { type: "praise", emoji: "👍", labelKey: "nudgePraise" as const },
-  { type: "heart", emoji: "❤️", labelKey: "sendNudge" as const },
-  { type: "time", emoji: "⏰", labelKey: "sendNudge" as const },
-];
-
 interface ConnectionData {
   id: string;
   status: string;
@@ -42,6 +21,16 @@ interface ConnectionData {
   target: { id: string; displayName: string; timezone: string };
 }
 
+interface SummaryItem {
+  medicationId: string;
+  name: string;
+  color: string;
+  scheduledTime: string;
+  block: string;
+  taken: boolean;
+  status: "taken" | "pending" | "missed";
+}
+
 interface UserSummary {
   user: { id: string; displayName: string; timezone: string };
   completed: number;
@@ -49,7 +38,20 @@ interface UserSummary {
   missed: number;
   total: number;
   blockSummaries: { block: string; completed: number; total: number }[];
+  items: SummaryItem[];
 }
+
+interface NudgeData {
+  id: string;
+  type: string;
+  medicationName: string | null;
+  message: string | null;
+  fromUser: { id: string; displayName: string };
+  createdAt: string;
+  readAt: string | null;
+}
+
+const AVATAR_COLORS = ["#F59E0B", "#3B82F6", "#8B5CF6", "#6366F1", "#10B981", "#EC4899"];
 
 export default function CaregiverScreen() {
   const insets = useSafeAreaInsets();
@@ -60,152 +62,175 @@ export default function CaregiverScreen() {
 
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [summaries, setSummaries] = useState<Record<string, UserSummary>>({});
+  const [messages, setMessages] = useState<NudgeData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [inputCode, setInputCode] = useState('');
-  const [showInvite, setShowInvite] = useState(false);
-  const [showConnect, setShowConnect] = useState(false);
-  const [nudgeFeedback, setNudgeFeedback] = useState<{ id: string; emoji: string } | null>(null);
+  const [friendId, setFriendId] = useState("");
+  const [sending, setSending] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [toast, setToast] = useState<string | null>(null);
 
-  const blockLabels: Record<string, string> = {
-    morning: t('morningBlock'),
-    afternoon: t('afternoonBlock'),
-    evening: t('eveningBlock'),
-    bedtime: t('bedtimeBlock'),
-  };
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }, []);
 
-  const loadConnections = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     try {
       const baseUrl = getApiUrl();
-      const res = await fetch(new URL('/api/connections', baseUrl).toString(), { credentials: 'include' });
+      const res = await fetch(new URL("/api/connections", baseUrl).toString(), { credentials: "include" });
       if (res.ok) {
         const data: ConnectionData[] = await res.json();
         setConnections(data);
 
-        const viewerAccepted = data.filter(c => c.role === 'viewer' && c.status === 'accepted');
+        const accepted = data.filter(c => c.status === "accepted");
         const newSummaries: Record<string, UserSummary> = {};
-        for (const conn of viewerAccepted) {
-          const targetId = conn.target.id;
+        for (const conn of accepted) {
+          const other = conn.isRequester ? conn.target : conn.requester;
           try {
-            const sRes = await fetch(new URL(`/api/summary/${targetId}`, baseUrl).toString(), { credentials: 'include' });
-            if (sRes.ok) {
-              newSummaries[targetId] = await sRes.json();
-            }
+            const sRes = await fetch(new URL(`/api/summary/${other.id}`, baseUrl).toString(), { credentials: "include" });
+            if (sRes.ok) newSummaries[other.id] = await sRes.json();
           } catch {}
         }
         setSummaries(newSummaries);
       }
+
+      const nRes = await fetch(new URL("/api/nudges", baseUrl).toString(), { credentials: "include" });
+      if (nRes.ok) {
+        const nData: NudgeData[] = await nRes.json();
+        setMessages(nData);
+      }
     } catch (err) {
-      console.error('Failed to load connections:', err);
+      console.error("Failed to load connections:", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadConnections();
-  }, [loadConnections]);
+    loadAll();
+  }, [loadAll]);
 
-  const handleGenerateInvite = async () => {
-    try {
-      const res = await apiRequest('POST', '/api/invites');
-      const data = await res.json();
-      setInviteCode(data.code);
-      setShowInvite(true);
-    } catch {
-      Alert.alert(t('error'), 'Failed to generate invite code');
+  const handleCopyId = async () => {
+    if (user?.username) {
+      await Clipboard.setStringAsync(user.username);
+      showToast(t("idCopied"));
     }
   };
 
-  const handleCopyCode = async () => {
-    if (inviteCode) {
-      await Clipboard.setStringAsync(inviteCode);
-      Alert.alert('', t('codeCopied'));
-    }
-  };
-
-  const handleAcceptInvite = async () => {
-    if (!inputCode.trim()) return;
+  const handleSendRequest = async () => {
+    const id = friendId.trim();
+    if (!id || sending) return;
+    setSending(true);
     try {
-      await apiRequest('POST', '/api/invites/accept', {
-        code: inputCode.trim().toUpperCase(),
-      });
-      Alert.alert('', t('requestSent'));
-      setInputCode('');
-      setShowConnect(false);
-      loadConnections();
+      await apiRequest("POST", "/api/connections/request", { username: id });
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setFriendId("");
+      showToast(t("requestSent"));
+      loadAll();
     } catch (err: any) {
-      const msg = err.message || '';
-      if (msg.includes('Invalid')) Alert.alert(t('error'), t('invalidCode'));
-      else if (msg.includes('expired')) Alert.alert(t('error'), t('codeExpired'));
-      else if (msg.includes('used')) Alert.alert(t('error'), t('codeUsed'));
-      else Alert.alert(t('error'), msg);
+      const msg = err?.message || "";
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (msg.includes("not found") || msg.includes("User not found")) showToast(t("userNotFound"));
+      else if (msg.includes("Already connected")) showToast(t("alreadyConnectedMsg"));
+      else if (msg.includes("pending")) showToast(t("alreadyRequestedMsg"));
+      else if (msg.includes("yourself")) showToast(t("cannotAddSelfMsg"));
+      else showToast(t("error"));
+    } finally {
+      setSending(false);
     }
   };
 
   const handleRespond = async (connId: string, accept: boolean) => {
     try {
-      await apiRequest('POST', '/api/connections/respond', { connectionId: connId, accept });
+      await apiRequest("POST", "/api/connections/respond", { connectionId: connId, accept });
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      loadConnections();
-    } catch {}
+      loadAll();
+    } catch {
+      showToast(t("error"));
+    }
   };
 
-  const handleDisconnect = (connId: string, label: string) => {
-    Alert.alert(label, t('disconnectConfirm'), [
-      { text: t('cancel'), style: 'cancel' },
-      {
-        text: t('confirm'),
-        style: 'destructive',
-        onPress: async () => {
-          await apiRequest('DELETE', `/api/connections/${connId}`).catch(() => {});
-          loadConnections();
-        },
-      },
+  const doRemove = useCallback(async (connId: string) => {
+    await apiRequest("DELETE", `/api/connections/${connId}`).catch(() => {});
+    loadAll();
+  }, [loadAll]);
+
+  const handleRemove = (connId: string, label: string) => {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`${label}\n\n${t("disconnectConfirm")}`)) {
+        doRemove(connId);
+      }
+      return;
+    }
+    Alert.alert(label, t("disconnectConfirm"), [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("confirm"), style: "destructive", onPress: () => doRemove(connId) },
     ]);
   };
 
-  const handleNudge = async (toUserId: string, type: string, emoji: string) => {
+  const handlePillMessage = async (toUserId: string, item: SummaryItem) => {
+    const type = item.taken ? "praise" : "reminder";
+    const message = item.taken ? t("goodJobMsg") : t("dontForgetMsg");
     try {
-      await apiRequest('POST', '/api/nudges', { toUserId, type });
+      await apiRequest("POST", "/api/nudges", {
+        toUserId,
+        type,
+        medicationName: item.name,
+        message,
+      });
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setNudgeFeedback({ id: toUserId, emoji });
-      setTimeout(() => setNudgeFeedback(null), 2500);
-    } catch {}
+      showToast(t("messageSent"));
+    } catch {
+      showToast(t("error"));
+    }
   };
 
   const getTimezoneLabel = (tz: string): string => {
-    if (tz === 'Asia/Seoul') return 'KST';
-    if (tz.includes('America/New_York')) return 'EST';
-    if (tz.includes('America/Los_Angeles')) return 'PST';
-    if (tz.includes('Europe/London')) return 'GMT';
-    return tz.split('/').pop() || tz;
+    if (tz === "Asia/Seoul") return "KST";
+    if (tz.includes("America/New_York")) return "EST";
+    if (tz.includes("America/Los_Angeles")) return "PST";
+    if (tz.includes("Europe/London")) return "GMT";
+    return tz.split("/").pop() || tz;
   };
 
-  const viewerConnections = connections.filter(c => c.role === 'viewer');
-  const ownerConnections = connections.filter(c => c.role === 'owner');
+  const formatTime = (iso: string): string => {
+    try {
+      const d = new Date(iso);
+      const h = d.getHours().toString().padStart(2, "0");
+      const m = d.getMinutes().toString().padStart(2, "0");
+      return `${h}:${m}`;
+    } catch {
+      return "";
+    }
+  };
 
-  const acceptedViewer = viewerConnections.filter(c => c.status === 'accepted');
-  const pendingViewer = viewerConnections.filter(c => c.status === 'pending');
-  const rejectedViewer = viewerConnections.filter(c => c.status === 'rejected');
-  const pendingOwner = ownerConnections.filter(c => c.status === 'pending');
-  const acceptedOwner = ownerConnections.filter(c => c.status === 'accepted');
+  const fallbackMessage = (n: NudgeData): string => {
+    if (n.message) return n.message;
+    if (n.type === "praise" || n.type === "thumbsup") return t("nudgePraise");
+    if (n.type === "reminder" || n.type === "pill") return t("nudgeReminder");
+    if (n.type === "heart") return "❤️";
+    return "⏰";
+  };
 
-  const sortedViewer = [...acceptedViewer].sort((a, b) => {
-    const sa = summaries[a.target.id];
-    const sb = summaries[b.target.id];
+  const accepted = connections.filter(c => c.status === "accepted");
+  const incoming = connections.filter(c => c.status === "pending" && !c.isRequester);
+  const outgoing = connections.filter(c => c.status === "pending" && c.isRequester);
+
+  const sortedFriends = [...accepted].sort((a, b) => {
+    const oa = a.isRequester ? a.target.id : a.requester.id;
+    const ob = b.isRequester ? b.target.id : b.requester.id;
+    const sa = summaries[oa];
+    const sb = summaries[ob];
     if (!sa && !sb) return 0;
     if (!sa) return 1;
     if (!sb) return -1;
-    const missedA = sa.missed;
-    const missedB = sb.missed;
-    if (missedA !== missedB) return missedB - missedA;
+    if (sa.missed !== sb.missed) return sb.missed - sa.missed;
     return (sa.completed / (sa.total || 1)) - (sb.completed / (sb.total || 1));
   });
 
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + webTopInset, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { paddingTop: insets.top + webTopInset, justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
@@ -214,82 +239,71 @@ export default function CaregiverScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('caregiverView')}</Text>
+        <Text style={styles.title}>{t("togetherView")}</Text>
       </View>
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 90 + webBottomInset }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.actionRow}>
+        <View style={styles.idCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.idLabel}>{t("myId")}</Text>
+            <Text style={styles.idValue} testID="my-id-value">{user?.username || "-"}</Text>
+            <Text style={styles.idDesc}>{t("myIdDesc")}</Text>
+          </View>
           <Pressable
-            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.8 }]}
-            onPress={handleGenerateInvite}
-            testID="generate-invite"
+            style={({ pressed }) => [styles.copyIdBtn, pressed && { opacity: 0.85 }]}
+            onPress={handleCopyId}
+            testID="copy-id-button"
           >
-            <Ionicons name="share-outline" size={18} color={Colors.primary} />
-            <Text style={styles.actionButtonText}>{t('generateInvite')}</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.8 }]}
-            onPress={() => setShowConnect(!showConnect)}
-            testID="enter-code-toggle"
-          >
-            <Ionicons name="link-outline" size={18} color={Colors.primary} />
-            <Text style={styles.actionButtonText}>{t('enterInviteCode')}</Text>
+            <Ionicons name="copy-outline" size={16} color="#fff" />
+            <Text style={styles.copyIdBtnText}>{t("copyId")}</Text>
           </Pressable>
         </View>
 
-        {showInvite && inviteCode && (
-          <Animated.View entering={Platform.OS !== "web" ? FadeInDown.springify() : undefined} style={styles.inviteCard}>
-            <Text style={styles.inviteLabel}>{t('inviteCode')}</Text>
-            <Text style={styles.inviteCodeText}>{inviteCode}</Text>
-            <Text style={styles.inviteDesc}>{t('inviteCodeDesc')}</Text>
-            <Pressable style={({ pressed }) => [styles.copyButton, pressed && { opacity: 0.8 }]} onPress={handleCopyCode}>
-              <Ionicons name="copy-outline" size={16} color="#fff" />
-              <Text style={styles.copyButtonText}>{t('copyCode')}</Text>
-            </Pressable>
-            <Text style={styles.expiresText}>{t('expiresIn')}</Text>
-          </Animated.View>
-        )}
-
-        {showConnect && (
-          <Animated.View entering={Platform.OS !== "web" ? FadeInDown.springify() : undefined} style={styles.connectCard}>
+        <View style={styles.addCard}>
+          <Text style={styles.addTitle}>{t("addFriend")}</Text>
+          <Text style={styles.addDesc}>{t("addFriendDesc")}</Text>
+          <View style={styles.addRow}>
             <TextInput
-              style={styles.codeInput}
-              placeholder={t('enterCodePlaceholder')}
-              placeholderTextColor="#999"
-              value={inputCode}
-              onChangeText={setInputCode}
-              autoCapitalize="characters"
-              maxLength={6}
-              testID="invite-code-input"
+              style={styles.addInput}
+              placeholder={t("friendIdPlaceholder")}
+              placeholderTextColor={Colors.textTertiary}
+              value={friendId}
+              onChangeText={setFriendId}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onSubmitEditing={handleSendRequest}
+              returnKeyType="send"
+              testID="friend-id-input"
             />
             <Pressable
               style={({ pressed }) => [
-                styles.connectButton,
-                !inputCode.trim() && styles.connectButtonDisabled,
+                styles.sendBtn,
+                (!friendId.trim() || sending) && styles.sendBtnDisabled,
                 pressed && { opacity: 0.85 },
               ]}
-              onPress={handleAcceptInvite}
-              disabled={!inputCode.trim()}
-              testID="accept-invite-button"
+              onPress={handleSendRequest}
+              disabled={!friendId.trim() || sending}
+              testID="send-request-button"
             >
-              <Text style={styles.connectButtonText}>{t('acceptInvite')}</Text>
+              {sending
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="person-add" size={18} color="#fff" />}
             </Pressable>
-          </Animated.View>
-        )}
+          </View>
+        </View>
 
-        {pendingOwner.length > 0 && (
+        {incoming.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="notifications" size={16} color={Colors.warning} />
-              <Text style={styles.sectionTitle}>{t('viewRequestTitle')}</Text>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{pendingOwner.length}</Text>
-              </View>
+              <Text style={styles.sectionTitle}>{t("incomingRequests")}</Text>
+              <View style={styles.badge}><Text style={styles.badgeText}>{incoming.length}</Text></View>
             </View>
-            {pendingOwner.map((conn) => (
+            {incoming.map(conn => (
               <Animated.View
                 key={conn.id}
                 entering={Platform.OS !== "web" ? FadeInDown.springify() : undefined}
@@ -301,21 +315,15 @@ export default function CaregiverScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.requestName}>{conn.requester.displayName}</Text>
-                    <Text style={styles.requestDesc}>{conn.requester.displayName}{t('viewRequestDesc')}</Text>
+                    <Text style={styles.requestDesc}>{conn.requester.displayName}{t("wantsToConnect")}</Text>
                   </View>
                 </View>
                 <View style={styles.requestActions}>
-                  <Pressable
-                    style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.8 }]}
-                    onPress={() => handleRespond(conn.id, false)}
-                  >
-                    <Text style={styles.rejectBtnText}>{t('reject')}</Text>
+                  <Pressable style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.8 }]} onPress={() => handleRespond(conn.id, false)}>
+                    <Text style={styles.rejectBtnText}>{t("reject")}</Text>
                   </Pressable>
-                  <Pressable
-                    style={({ pressed }) => [styles.approveBtn, pressed && { opacity: 0.8 }]}
-                    onPress={() => handleRespond(conn.id, true)}
-                  >
-                    <Text style={styles.approveBtnText}>{t('approve')}</Text>
+                  <Pressable style={({ pressed }) => [styles.approveBtn, pressed && { opacity: 0.8 }]} onPress={() => handleRespond(conn.id, true)} testID={`approve-${conn.id}`}>
+                    <Text style={styles.approveBtnText}>{t("approve")}</Text>
                   </Pressable>
                 </View>
               </Animated.View>
@@ -323,47 +331,68 @@ export default function CaregiverScreen() {
           </View>
         )}
 
-        {sortedViewer.length > 0 && (
+        {messages.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="eye" size={16} color={Colors.primary} />
-              <Text style={styles.sectionTitle}>{t('peopleICanView')}</Text>
+              <Ionicons name="chatbubble-ellipses" size={16} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>{t("receivedMessages")}</Text>
             </View>
-            {sortedViewer.map((conn, index) => {
-              const person = conn.target;
-              const displayName = conn.nickname || person.displayName;
-              const tzLabel = getTimezoneLabel(person.timezone);
-              const summary = summaries[person.id];
-              const progress = summary && summary.total > 0
-                ? Math.round((summary.completed / summary.total) * 100)
-                : 0;
+            {messages.slice(0, 8).map(n => {
+              const isPraise = n.type === "praise" || n.type === "heart" || n.type === "thumbsup";
+              return (
+                <View key={n.id} style={styles.messageCard}>
+                  <View style={[styles.msgAvatar, { backgroundColor: isPraise ? Colors.successBg : Colors.warningBg }]}>
+                    <Text style={styles.msgAvatarText}>{n.fromUser.displayName.charAt(0)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.msgFrom}>
+                      {n.fromUser.displayName}
+                      {n.medicationName ? <Text style={styles.msgMed}>{` · ${n.medicationName}`}</Text> : null}
+                    </Text>
+                    <Text style={styles.msgText}>{fallbackMessage(n)}</Text>
+                  </View>
+                  <Text style={styles.msgTime}>{formatTime(n.createdAt)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
+        {sortedFriends.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="people" size={16} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>{t("friends")}</Text>
+            </View>
+            {sortedFriends.map((conn, index) => {
+              const other = conn.isRequester ? conn.target : conn.requester;
+              const displayName = conn.nickname || other.displayName;
+              const tzLabel = getTimezoneLabel(other.timezone);
+              const summary = summaries[other.id];
+              const progress = summary && summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0;
               const statusColor = summary
-                ? summary.missed > 0 ? Colors.danger
-                : summary.pending > 0 ? Colors.warning
-                : Colors.success
+                ? summary.missed > 0 ? Colors.danger : summary.pending > 0 ? Colors.warning : Colors.success
                 : Colors.textTertiary;
+              const isCollapsed = collapsed[conn.id];
 
               return (
                 <Animated.View
                   key={conn.id}
                   entering={Platform.OS !== "web" ? FadeInDown.delay(index * 60).springify() : undefined}
                   style={styles.personCard}
+                  testID="friend-card"
                 >
                   <View style={styles.personHeader}>
                     <View style={styles.personInfo}>
-                      <View style={[styles.avatar, { backgroundColor: BLOCK_COLORS[['morning', 'afternoon', 'evening', 'bedtime'][index % 4]] + '20' }]}>
+                      <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] + "20" }]}>
                         <Text style={styles.avatarText}>{displayName.charAt(0)}</Text>
                       </View>
                       <View>
                         <Text style={styles.personName}>{displayName}</Text>
-                        <Text style={styles.personTz}>({tzLabel})</Text>
+                        <Text style={styles.personTz}>{other.displayName} · {tzLabel}</Text>
                       </View>
                     </View>
-                    <Pressable
-                      onPress={() => handleDisconnect(conn.id, t('removeAccess'))}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
+                    <Pressable onPress={() => handleRemove(conn.id, displayName)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                       <Ionicons name="close-circle-outline" size={20} color={Colors.textTertiary} />
                     </Pressable>
                   </View>
@@ -380,53 +409,68 @@ export default function CaregiverScreen() {
                       <View style={styles.statsRow}>
                         <View style={styles.statItem}>
                           <Text style={[styles.statValue, { color: Colors.success }]}>{summary.completed}</Text>
-                          <Text style={styles.statLabel}>{t('caregiverCompleted')}</Text>
+                          <Text style={styles.statLabel}>{t("caregiverCompleted")}</Text>
                         </View>
                         <View style={styles.statItem}>
                           <Text style={[styles.statValue, { color: Colors.warning }]}>{summary.pending}</Text>
-                          <Text style={styles.statLabel}>{t('caregiverPending')}</Text>
+                          <Text style={styles.statLabel}>{t("caregiverPending")}</Text>
                         </View>
                         <View style={styles.statItem}>
                           <Text style={[styles.statValue, { color: Colors.danger }]}>{summary.missed}</Text>
-                          <Text style={styles.statLabel}>{t('caregiverMissed')}</Text>
+                          <Text style={styles.statLabel}>{t("caregiverMissed")}</Text>
                         </View>
                       </View>
 
-                      {summary.blockSummaries.length > 0 && (
-                        <View style={styles.blocksRow}>
-                          {summary.blockSummaries.map(bs => (
-                            <View key={bs.block} style={styles.blockItem}>
-                              <Ionicons name={BLOCK_ICONS[bs.block] || "time"} size={14} color={BLOCK_COLORS[bs.block] || '#666'} />
-                              <Text style={styles.blockItemText}>
-                                {blockLabels[bs.block]} {bs.completed}/{bs.total}
-                              </Text>
-                              {bs.completed === bs.total && (
-                                <Ionicons name="checkmark-circle" size={12} color={Colors.success} />
-                              )}
+                      {summary.items.length > 0 && (
+                        <>
+                          <Pressable
+                            style={styles.toggleRow}
+                            onPress={() => setCollapsed(prev => ({ ...prev, [conn.id]: !prev[conn.id] }))}
+                          >
+                            <Text style={styles.toggleText}>{isCollapsed ? t("viewPills") : t("hidePills")}</Text>
+                            <Ionicons name={isCollapsed ? "chevron-down" : "chevron-up"} size={16} color={Colors.textSecondary} />
+                          </Pressable>
+
+                          {!isCollapsed && (
+                            <View style={styles.pillList}>
+                              {summary.items.map(item => (
+                                <View key={`${item.medicationId}-${item.scheduledTime}`} style={styles.pillRow}>
+                                  <View style={[styles.pillDot, { backgroundColor: item.color }]} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.pillName} numberOfLines={1}>{item.name}</Text>
+                                    <Text style={styles.pillTime}>{item.scheduledTime}</Text>
+                                  </View>
+                                  <View style={[
+                                    styles.statusChip,
+                                    { backgroundColor: item.taken ? Colors.successBg : item.status === "missed" ? Colors.dangerBg : Colors.surfaceSecondary },
+                                  ]}>
+                                    <Text style={[
+                                      styles.statusChipText,
+                                      { color: item.taken ? Colors.success : item.status === "missed" ? Colors.danger : Colors.textSecondary },
+                                    ]}>
+                                      {item.taken ? t("pillTaken") : t("pillNotTaken")}
+                                    </Text>
+                                  </View>
+                                  <Pressable
+                                    style={({ pressed }) => [
+                                      styles.msgBtn,
+                                      { backgroundColor: item.taken ? Colors.success : Colors.warning },
+                                      pressed && { opacity: 0.85 },
+                                    ]}
+                                    onPress={() => handlePillMessage(other.id, item)}
+                                    testID={`pill-msg-${item.medicationId}`}
+                                  >
+                                    <Text style={styles.msgBtnText}>
+                                      {item.taken ? `👏 ${t("sendGoodJob")}` : `💊 ${t("sendDontForget")}`}
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                              ))}
                             </View>
-                          ))}
-                        </View>
+                          )}
+                        </>
                       )}
                     </>
-                  )}
-
-                  <View style={styles.nudgeRow}>
-                    {PRESET_NUDGES.map(n => (
-                      <Pressable
-                        key={n.type}
-                        style={({ pressed }) => [styles.nudgeButton, pressed && { transform: [{ scale: 0.9 }] }]}
-                        onPress={() => handleNudge(person.id, n.type, n.emoji)}
-                      >
-                        <Text style={styles.nudgeEmoji}>{n.emoji}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  {nudgeFeedback && nudgeFeedback.id === person.id && (
-                    <Animated.View entering={FadeIn.duration(200)} style={styles.nudgeFeedbackBar}>
-                      <Text style={styles.nudgeFeedbackText}>
-                        {nudgeFeedback.emoji} {t('nudgeSentTo')} {displayName}
-                      </Text>
-                    </Animated.View>
                   )}
                 </Animated.View>
               );
@@ -434,62 +478,27 @@ export default function CaregiverScreen() {
           </View>
         )}
 
-        {(pendingViewer.length > 0 || rejectedViewer.length > 0) && (
+        {outgoing.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="hourglass" size={16} color={Colors.textSecondary} />
-              <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>{t('pendingApproval')}</Text>
+              <Ionicons name="paper-plane-outline" size={16} color={Colors.textSecondary} />
+              <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>{t("outgoingRequests")}</Text>
             </View>
-            {pendingViewer.map(conn => (
+            {outgoing.map(conn => (
               <View key={conn.id} style={styles.pendingCard}>
                 <View style={styles.personInfo}>
                   <View style={[styles.avatarSmall, { backgroundColor: Colors.surfaceSecondary }]}>
                     <Ionicons name="hourglass-outline" size={16} color={Colors.textTertiary} />
                   </View>
-                  <View>
-                    <Text style={styles.pendingName}>{conn.target.displayName}</Text>
-                    <Text style={styles.pendingStatus}>{t('pendingApproval')}</Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-            {rejectedViewer.map(conn => (
-              <View key={conn.id} style={styles.pendingCard}>
-                <View style={styles.personInfo}>
-                  <View style={[styles.avatarSmall, { backgroundColor: Colors.dangerBg }]}>
-                    <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
-                  </View>
-                  <View>
-                    <Text style={styles.pendingName}>{conn.target.displayName}</Text>
-                    <Text style={[styles.pendingStatus, { color: Colors.danger }]}>{t('rejected')}</Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {acceptedOwner.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="eye-off" size={16} color={Colors.textSecondary} />
-              <Text style={styles.sectionTitle}>{t('peopleWhoCanViewMe')}</Text>
-            </View>
-            {acceptedOwner.map(conn => (
-              <View key={conn.id} style={styles.viewerCard}>
-                <View style={styles.personInfo}>
-                  <View style={[styles.avatarSmall, { backgroundColor: Colors.primaryBg }]}>
-                    <Text style={styles.avatarSmallText}>{conn.requester.displayName.charAt(0)}</Text>
-                  </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.viewerName}>{conn.requester.displayName}</Text>
-                    <Text style={styles.viewerLabel}>{t('viewerLabel')}</Text>
+                    <Text style={styles.pendingName}>{conn.target.displayName}</Text>
+                    <Text style={styles.pendingStatus}>{t("waitingApproval")}</Text>
                   </View>
                   <Pressable
-                    onPress={() => handleDisconnect(conn.id, t('revokeAccess'))}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={({ pressed }) => [styles.cancelReqBtn, pressed && { opacity: 0.8 }]}
+                    onPress={() => handleRemove(conn.id, conn.target.displayName)}
                   >
-                    <Ionicons name="close-circle-outline" size={20} color={Colors.textTertiary} />
+                    <Text style={styles.cancelReqText}>{t("cancelRequest")}</Text>
                   </Pressable>
                 </View>
               </View>
@@ -497,16 +506,26 @@ export default function CaregiverScreen() {
           </View>
         )}
 
-        {connections.length === 0 && (
+        {connections.length === 0 && messages.length === 0 && (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
               <Ionicons name="people-outline" size={56} color={Colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>{t('noConnectionsYet')}</Text>
-            <Text style={styles.emptySubtitle}>{t('noConnectionsDesc')}</Text>
+            <Text style={styles.emptyTitle}>{t("noConnectionsYet")}</Text>
+            <Text style={styles.emptySubtitle}>{t("addFriendDesc")}</Text>
           </View>
         )}
       </ScrollView>
+
+      {toast && (
+        <Animated.View
+          entering={Platform.OS !== "web" ? FadeIn.duration(150) : undefined}
+          style={[styles.toast, { bottom: insets.bottom + 100 + webBottomInset }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.toastText}>{toast}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -516,137 +535,138 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
   title: { fontFamily: "Inter_700Bold", fontSize: 22, color: Colors.text },
   scrollContent: { paddingHorizontal: 20, gap: 16 },
-  actionRow: { flexDirection: 'row', gap: 10 },
-  actionButton: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.surface, borderRadius: 12, paddingVertical: 12,
-    borderWidth: 1, borderColor: Colors.primary + '30',
+
+  idCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: Colors.primary, borderRadius: 16, padding: 18,
   },
-  actionButtonText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: Colors.primary },
-  inviteCard: {
-    backgroundColor: Colors.primary + '08', borderRadius: 14, padding: 20,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.primary + '20',
+  idLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: "#FFFFFFCC" },
+  idValue: { fontFamily: "Inter_700Bold", fontSize: 24, color: "#FFFFFF", marginTop: 2, letterSpacing: 0.5 },
+  idDesc: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#FFFFFFCC", marginTop: 4 },
+  copyIdBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "#FFFFFF33", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
   },
-  inviteLabel: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.textSecondary, marginBottom: 6 },
-  inviteCodeText: { fontFamily: "Inter_700Bold", fontSize: 32, color: Colors.primary, letterSpacing: 6 },
-  inviteDesc: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginTop: 6 },
-  copyButton: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary,
-    borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, marginTop: 12,
-  },
-  copyButtonText: { color: '#fff', fontFamily: "Inter_600SemiBold", fontSize: 13 },
-  expiresText: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary, marginTop: 6 },
-  connectCard: {
-    backgroundColor: Colors.surface, borderRadius: 14, padding: 16, gap: 10,
+  copyIdBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 },
+
+  addCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 16, gap: 4,
     borderWidth: 1, borderColor: Colors.borderLight,
   },
-  codeInput: {
-    backgroundColor: '#f5f5f5', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 16, fontFamily: "Inter_600SemiBold", textAlign: 'center', color: '#333', letterSpacing: 3,
+  addTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text },
+  addDesc: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginBottom: 8 },
+  addRow: { flexDirection: "row", gap: 8 },
+  addInput: {
+    flex: 1, backgroundColor: Colors.surfaceSecondary, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
+    fontFamily: "Inter_500Medium", color: Colors.text,
   },
-  connectButton: {
-    backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 12, alignItems: 'center',
+  sendBtn: {
+    width: 48, borderRadius: 10, backgroundColor: Colors.primary,
+    alignItems: "center", justifyContent: "center",
   },
-  connectButtonDisabled: { opacity: 0.5 },
-  connectButtonText: { color: '#fff', fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  sendBtnDisabled: { opacity: 0.5 },
+
   section: { gap: 8 },
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2,
-  },
-  sectionTitle: {
-    fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text, flex: 1,
-  },
-  badge: {
-    backgroundColor: Colors.warning, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
-  },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
+  sectionTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text, flex: 1 },
+  badge: { backgroundColor: Colors.warning, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
   badgeText: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#FFF" },
+
   requestCard: {
     backgroundColor: Colors.warningBg, borderRadius: 14, padding: 14, gap: 10,
-    borderWidth: 1, borderColor: Colors.warning + '30',
+    borderWidth: 1, borderColor: Colors.warning + "30",
   },
-  requestInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  requestInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
   requestName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text },
   requestDesc: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textSecondary, marginTop: 1 },
-  requestActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
-  rejectBtn: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: Colors.surfaceSecondary,
-  },
+  requestActions: { flexDirection: "row", gap: 8, justifyContent: "flex-end" },
+  rejectBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface },
   rejectBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.textSecondary },
-  approveBtn: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: Colors.primary,
-  },
+  approveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.primary },
   approveBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#FFF" },
+
+  messageCard: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: Colors.surface, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: Colors.borderLight,
+  },
+  msgAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  msgAvatarText: { fontFamily: "Inter_700Bold", fontSize: 14, color: Colors.text },
+  msgFrom: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.text },
+  msgMed: { fontFamily: "Inter_500Medium", fontSize: 12, color: Colors.textSecondary },
+  msgText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  msgTime: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary },
+
   personCard: {
     backgroundColor: Colors.surface, borderRadius: 16, padding: 14,
     borderWidth: 1, borderColor: Colors.borderLight, gap: 10,
   },
-  personHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  personInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
-  },
+  personHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  personInfo: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   avatarText: { fontFamily: "Inter_700Bold", fontSize: 18, color: Colors.text },
   avatarSmall: {
-    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center",
     backgroundColor: Colors.primaryBg,
   },
   avatarSmallText: { fontFamily: "Inter_700Bold", fontSize: 14, color: Colors.text },
   personName: { fontFamily: "Inter_700Bold", fontSize: 16, color: Colors.text },
-  personTz: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  progressBarBg: {
-    flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.borderLight, overflow: 'hidden',
-  },
-  progressBarFill: { height: '100%', borderRadius: 3 },
-  progressPercent: { fontFamily: "Inter_700Bold", fontSize: 13, minWidth: 36, textAlign: 'right' },
-  statsRow: { flexDirection: 'row', gap: 6 },
-  statItem: {
-    flex: 1, alignItems: 'center', backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 8,
-  },
+  personTz: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary, marginTop: 1 },
+
+  progressRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  progressBarBg: { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.borderLight, overflow: "hidden" },
+  progressBarFill: { height: "100%", borderRadius: 3 },
+  progressPercent: { fontFamily: "Inter_700Bold", fontSize: 13, minWidth: 36, textAlign: "right" },
+
+  statsRow: { flexDirection: "row", gap: 6 },
+  statItem: { flex: 1, alignItems: "center", backgroundColor: "#f8f9fa", borderRadius: 8, paddingVertical: 8 },
   statValue: { fontFamily: "Inter_700Bold", fontSize: 20 },
   statLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: Colors.textSecondary, marginTop: 1 },
-  blocksRow: { gap: 4 },
-  blockItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4,
-    paddingHorizontal: 10, backgroundColor: '#f8f9fa', borderRadius: 6,
+
+  toggleRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+    paddingVertical: 6, borderTopWidth: 1, borderTopColor: Colors.borderLight,
   },
-  blockItemText: { fontFamily: "Inter_500Medium", fontSize: 12, color: Colors.text, flex: 1 },
-  nudgeRow: {
-    flexDirection: 'row', gap: 8, justifyContent: 'center',
-    paddingTop: 6, borderTopWidth: 1, borderTopColor: Colors.borderLight,
+  toggleText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: Colors.textSecondary },
+
+  pillList: { gap: 8 },
+  pillRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#f8f9fa", borderRadius: 10, padding: 10,
   },
-  nudgeButton: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: '#f0f0f0',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  nudgeEmoji: { fontSize: 18 },
-  nudgeFeedbackBar: {
-    backgroundColor: Colors.successBg, borderRadius: 8,
-    paddingVertical: 6, paddingHorizontal: 10, alignItems: 'center',
-  },
-  nudgeFeedbackText: { fontFamily: "Inter_500Medium", fontSize: 12, color: Colors.success },
+  pillDot: { width: 10, height: 10, borderRadius: 5 },
+  pillName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.text },
+  pillTime: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary, marginTop: 1 },
+  statusChip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  statusChipText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  msgBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  msgBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#fff" },
+
   pendingCard: {
     backgroundColor: Colors.surfaceSecondary, borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: Colors.borderLight,
   },
   pendingName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.text },
   pendingStatus: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary },
-  viewerCard: {
-    backgroundColor: Colors.surface, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: Colors.borderLight,
-  },
-  viewerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.text },
-  viewerLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textTertiary },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 8 },
+  cancelReqBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: Colors.surface },
+  cancelReqText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: Colors.textSecondary },
+
+  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 8 },
   emptyIconContainer: {
     width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.surfaceSecondary,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    alignItems: "center", justifyContent: "center", marginBottom: 8,
   },
   emptyTitle: { fontFamily: "Inter_600SemiBold", fontSize: 20, color: Colors.text },
   emptySubtitle: {
     fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textSecondary,
-    textAlign: 'center', paddingHorizontal: 40,
+    textAlign: "center", paddingHorizontal: 40,
   },
+
+  toast: {
+    position: "absolute", left: 40, right: 40,
+    backgroundColor: Colors.text, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  toastText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" },
 });

@@ -213,6 +213,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(mapped);
   });
 
+  app.post("/api/connections/request", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { username, nickname } = req.body;
+      if (!username || !username.trim()) {
+        return res.status(400).json({ message: "Username is required" });
+      }
+      const myUserId = req.session.userId!;
+      const target = await storage.getUserByUsername(username.trim());
+      if (!target) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (target.id === myUserId) {
+        return res.status(400).json({ message: "Cannot add yourself" });
+      }
+
+      const conns = await storage.getConnections(myUserId);
+      const existing = conns.find(c =>
+        (c.requesterId === myUserId && c.targetId === target.id) ||
+        (c.targetId === myUserId && c.requesterId === target.id)
+      );
+      if (existing) {
+        if (existing.status === "accepted") {
+          return res.status(409).json({ message: "Already connected" });
+        }
+        if (existing.status === "pending") {
+          return res.status(409).json({ message: "Request already pending" });
+        }
+        await storage.deleteConnection(existing.id);
+      }
+
+      const conn = await storage.createConnection(myUserId, target.id, nickname);
+      res.json(conn);
+    } catch (err: any) {
+      console.error("Connection request error:", err.message);
+      res.status(500).json({ message: "Failed to send request" });
+    }
+  });
+
   app.post("/api/connections/respond", requireAuth, async (req: Request, res: Response) => {
     try {
       const { connectionId, accept } = req.body;
@@ -279,7 +317,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const conns = await storage.getConnections(myUserId);
         const hasAccess = conns.some(c =>
           c.status === "accepted" &&
-          c.requesterId === myUserId && c.targetId === targetUserId
+          ((c.requesterId === myUserId && c.targetId === targetUserId) ||
+           (c.targetId === myUserId && c.requesterId === targetUserId))
         );
         if (!hasAccess) {
           return res.status(403).json({ message: "Not authorized to view this user's data" });
@@ -299,6 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         missed: summary.missed,
         total: summary.total,
         blockSummaries: summary.blockSummaries,
+        items: summary.items,
       });
     } catch (err: any) {
       console.error("Summary error:", err.message);
@@ -308,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/nudges", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { toUserId, type } = req.body;
+      const { toUserId, type, medicationName, message } = req.body;
       const allowedTypes = ["reminder", "praise", "heart", "time"];
       if (!allowedTypes.includes(type)) {
         return res.status(400).json({ message: "Invalid nudge type" });
@@ -320,7 +360,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
          (c.targetId === req.session.userId && c.requesterId === toUserId))
       );
       if (!hasAccess) return res.status(403).json({ message: "Not connected" });
-      const nudge = await storage.createNudge(req.session.userId!, toUserId, type);
+      const cleanMessage = typeof message === "string" ? message.slice(0, 200) : null;
+      const cleanMedName = typeof medicationName === "string" ? medicationName.slice(0, 100) : null;
+      const nudge = await storage.createNudge(req.session.userId!, toUserId, type, cleanMedName, cleanMessage);
       res.json(nudge);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to send nudge" });
@@ -332,6 +374,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(nudgeList.map(n => ({
       id: n.id,
       type: n.type,
+      medicationName: n.medicationName,
+      message: n.message,
       fromUser: { id: n.fromUser.id, displayName: n.fromUser.displayName },
       createdAt: n.createdAt,
       readAt: n.readAt,

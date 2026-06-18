@@ -80,6 +80,8 @@ export const nudges = pgTable("nudges", {
   fromUserId: varchar("from_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   toUserId: varchar("to_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
+  medicationName: text("medication_name"),
+  message: text("message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   readAt: timestamp("read_at"),
 });
