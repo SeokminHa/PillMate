@@ -17,11 +17,31 @@ function getDateString(date: Date): string {
 
 type DayStatus = 'all' | 'partial' | 'none' | 'future' | 'empty';
 
-function getStatusEmoji(status: DayStatus): string {
-  if (status === 'all') return '😊';
-  if (status === 'partial') return '🔶';
-  if (status === 'none') return '😢';
-  return '';
+type StatusKind = 'all' | 'partial' | 'none';
+
+const STATUS_CONFIG: Record<StatusKind, { bg: string; icon: React.ComponentProps<typeof Ionicons>["name"] }> = {
+  all: { bg: Colors.success, icon: 'checkmark' },
+  partial: { bg: Colors.warning, icon: 'remove' },
+  none: { bg: Colors.danger, icon: 'close' },
+};
+
+function StatusBadge({ status, size = 18 }: { status: DayStatus; size?: number }) {
+  if (status !== 'all' && status !== 'partial' && status !== 'none') return null;
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: cfg.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Ionicons name={cfg.icon} size={Math.round(size * 0.66)} color="#FFF" />
+    </View>
+  );
 }
 
 export default function MonthlyCalendarScreen() {
@@ -201,16 +221,8 @@ export default function MonthlyCalendarScreen() {
         ]}>
           {item.day}
         </Text>
-        {item.status === 'all' && (
-          <Text style={styles.statusEmoji}>😊</Text>
-        )}
-        {item.status === 'partial' && (
-          <View style={styles.partialDot}>
-            <Text style={styles.statusEmojiSmall}>🔶</Text>
-          </View>
-        )}
-        {item.status === 'none' && (
-          <Text style={styles.statusEmoji}>😢</Text>
+        {(item.status === 'all' || item.status === 'partial' || item.status === 'none') && (
+          <StatusBadge status={item.status} size={18} />
         )}
         {item.status === 'future' && (
           <View style={styles.futureDot} />
@@ -349,7 +361,7 @@ export default function MonthlyCalendarScreen() {
                 {selectedDayDetail.map(({ med, taken, total, status }) => (
                   <View key={med.id} style={styles.dayDetailRow}>
                     <View style={styles.dayDetailLeft}>
-                      <Text style={styles.dayDetailEmoji}>{getStatusEmoji(status)}</Text>
+                      <StatusBadge status={status} size={22} />
                       <View style={[styles.dayDetailDot, { backgroundColor: med.color }]} />
                       <Text style={styles.dayDetailMedName} numberOfLines={1}>{med.name}</Text>
                     </View>
@@ -369,15 +381,15 @@ export default function MonthlyCalendarScreen() {
 
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <Text style={styles.legendEmoji}>😊</Text>
+            <StatusBadge status="all" size={18} />
             <Text style={styles.legendText}>{t('allTaken')}</Text>
           </View>
           <View style={styles.legendItem}>
-            <Text style={styles.legendEmoji}>🔶</Text>
+            <StatusBadge status="partial" size={18} />
             <Text style={styles.legendText}>{t('partiallyTaken')}</Text>
           </View>
           <View style={styles.legendItem}>
-            <Text style={styles.legendEmoji}>😢</Text>
+            <StatusBadge status="none" size={18} />
             <Text style={styles.legendText}>{t('notTaken')}</Text>
           </View>
         </View>
@@ -546,15 +558,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     color: Colors.primary,
   },
-  statusEmoji: {
-    fontSize: 16,
-  },
-  statusEmojiSmall: {
-    fontSize: 12,
-  },
-  partialDot: {
-    alignItems: "center",
-  },
   futureDot: {
     width: 4,
     height: 4,
@@ -600,9 +603,6 @@ const styles = StyleSheet.create({
     gap: 10,
     flex: 1,
   },
-  dayDetailEmoji: {
-    fontSize: 18,
-  },
   dayDetailDot: {
     width: 10,
     height: 10,
@@ -639,9 +639,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-  },
-  legendEmoji: {
-    fontSize: 16,
   },
   legendText: {
     fontFamily: "Inter_400Regular",
