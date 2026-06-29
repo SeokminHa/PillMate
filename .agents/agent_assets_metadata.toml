@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "IlM8533uEVobjxPmbli4-"
+uri = "file://CHANGES_SCRIPT.md"
+type = "text"
+title = "PillMate — Changes Walkthrough Script (English)"
