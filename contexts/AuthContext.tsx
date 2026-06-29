@@ -16,6 +16,8 @@ interface AuthContextValue {
   register: (username: string, password: string, displayName: string, timezone?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: { displayName?: string; timezone?: string }) => Promise<void>;
+  pendingRequestCount: number;
+  refreshPendingCount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -23,10 +25,34 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  const refreshPendingCount = useCallback(async () => {
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL('/api/connections/pending-count', baseUrl);
+      const res = await fetch(url.toString(), { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingRequestCount(typeof data.count === 'number' ? data.count : 0);
+      }
+    } catch (err) {
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setPendingRequestCount(0);
+      return;
+    }
+    refreshPendingCount();
+    const interval = setInterval(refreshPendingCount, 15000);
+    return () => clearInterval(interval);
+  }, [user, refreshPendingCount]);
 
   const checkAuth = async () => {
     try {
@@ -68,7 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     user, isLoading, login, register, logout, updateProfile,
-  }), [user, isLoading, login, register, logout, updateProfile]);
+    pendingRequestCount, refreshPendingCount,
+  }), [user, isLoading, login, register, logout, updateProfile, pendingRequestCount, refreshPendingCount]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -1,2 +1,3 @@
 - [db:push session table trap](db-push-session-table.md) — `npm run db:push` wants to DROP the connect-pg-simple `session` table; never confirm. Use direct additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` instead.
 - [RN Web Alert unreliable](rn-web-alert.md) — `Alert.alert` does not render on React Native Web in this app; use a custom in-app toast for feedback and `window.confirm` for confirmations.
+- [Metro stale skill-dir crash](metro-stale-skill-dir-crash.md) — Expo frontend can crash with ENOENT watching a deleted `.local/skills/.old-*` dir; not a code bug, just restart the frontend workflow.

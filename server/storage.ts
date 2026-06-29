@@ -30,10 +30,12 @@ export interface IStorage {
   reorderMedications(userId: string, orderedIds: string[]): Promise<void>;
 
   getDoseLogs(userId: string, date?: string): Promise<DoseLog[]>;
+  getDoseLogById(id: string): Promise<DoseLog | undefined>;
   createDoseLog(data: { userId: string; medicationId: string; scheduledTime: string; date: string; photoUri?: string }): Promise<DoseLog>;
   deleteDoseLog(id: string): Promise<void>;
 
   getConnections(userId: string): Promise<(Connection & { requester: User; target: User })[]>;
+  getConnectionById(id: string): Promise<Connection | undefined>;
   createConnection(requesterId: string, targetId: string, nickname?: string): Promise<Connection>;
   updateConnectionStatus(id: string, status: string): Promise<Connection | undefined>;
   deleteConnection(id: string): Promise<void>;
@@ -44,6 +46,7 @@ export interface IStorage {
 
   createNudge(fromUserId: string, toUserId: string, type: string, medicationName?: string | null, message?: string | null): Promise<Nudge>;
   getNudges(userId: string): Promise<(Nudge & { fromUser: User })[]>;
+  getNudgeById(id: string): Promise<Nudge | undefined>;
   markNudgeRead(id: string): Promise<void>;
 
   getUserSummary(userId: string, date: string): Promise<{

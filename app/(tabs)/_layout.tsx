@@ -1,15 +1,17 @@
 import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
+import { NativeTabs, Icon, Label, Badge } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 function NativeTabLayout() {
   const { t } = useLanguage();
+  const { pendingRequestCount } = useAuth();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
@@ -27,6 +29,7 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="caregiver">
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
         <Label>{t('caregiverView')}</Label>
+        {pendingRequestCount > 0 ? <Badge>{String(pendingRequestCount)}</Badge> : null}
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -38,6 +41,7 @@ function ClassicTabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
   const { t } = useLanguage();
+  const { pendingRequestCount } = useAuth();
 
   return (
     <Tabs
@@ -103,6 +107,7 @@ function ClassicTabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size} color={color} />
           ),
+          tabBarBadge: pendingRequestCount > 0 ? pendingRequestCount : undefined,
         }}
       />
     </Tabs>

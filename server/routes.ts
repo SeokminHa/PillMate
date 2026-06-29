@@ -126,6 +126,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/medications/reorder", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { orderedIds } = req.body;
+      await storage.reorderMedications(req.session.userId!, orderedIds);
+      res.json({ message: "Reordered" });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to reorder" });
+    }
+  });
+
   app.put("/api/medications/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const existing = await storage.getMedication(req.params.id);
@@ -147,16 +157,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Deleted" });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete medication" });
-    }
-  });
-
-  app.put("/api/medications/reorder", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const { orderedIds } = req.body;
-      await storage.reorderMedications(req.session.userId!, orderedIds);
-      res.json({ message: "Reordered" });
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to reorder" });
     }
   });
 
@@ -195,6 +195,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Deleted" });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete log" });
+    }
+  });
+
+  app.get("/api/connections/pending-count", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const conns = await storage.getConnections(req.session.userId!);
+      const count = conns.filter(c => c.status === "pending" && c.targetId === req.session.userId).length;
+      res.json({ count });
+    } catch {
+      res.json({ count: 0 });
     }
   });
 
@@ -301,7 +311,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.useInviteCode(code, req.session.userId!);
       const conn = await storage.createConnection(req.session.userId!, invite.userId, nickname);
-      res.json(conn);
+      const accepted = await storage.updateConnectionStatus(conn.id, "accepted");
+      res.json(accepted);
     } catch (err: any) {
       console.error("Accept invite error:", err.message);
       res.status(500).json({ message: "Failed to accept invite" });

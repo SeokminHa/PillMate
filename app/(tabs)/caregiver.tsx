@@ -1,8 +1,8 @@
-import { StyleSheet, Text, View, ScrollView, Platform, Pressable, TextInput, Alert, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Platform, Pressable, TextInput, Alert, ActivityIndicator, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
@@ -56,7 +56,7 @@ const AVATAR_COLORS = ["#F59E0B", "#3B82F6", "#8B5CF6", "#6366F1", "#10B981", "#
 export default function CaregiverScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, refreshPendingCount } = useAuth();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
 
@@ -68,10 +68,22 @@ export default function CaregiverScreen() {
   const [sending, setSending] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+    toastTimer.current = setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, 2200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -84,12 +96,16 @@ export default function CaregiverScreen() {
 
         const accepted = data.filter(c => c.status === "accepted");
         const newSummaries: Record<string, UserSummary> = {};
-        for (const conn of accepted) {
-          const other = conn.isRequester ? conn.target : conn.requester;
-          try {
+        const results = await Promise.allSettled(
+          accepted.map(async (conn) => {
+            const other = conn.isRequester ? conn.target : conn.requester;
             const sRes = await fetch(new URL(`/api/summary/${other.id}`, baseUrl).toString(), { credentials: "include" });
-            if (sRes.ok) newSummaries[other.id] = await sRes.json();
-          } catch {}
+            if (!sRes.ok) throw new Error("summary fetch failed");
+            return { id: other.id, summary: (await sRes.json()) as UserSummary };
+          })
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled") newSummaries[r.value.id] = r.value.summary;
         }
         setSummaries(newSummaries);
       }
@@ -108,7 +124,16 @@ export default function CaregiverScreen() {
 
   useEffect(() => {
     loadAll();
+    const interval = setInterval(loadAll, 10000);
+    return () => clearInterval(interval);
   }, [loadAll]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadAll();
+    refreshPendingCount();
+    setRefreshing(false);
+  }, [loadAll, refreshPendingCount]);
 
   const handleCopyId = async () => {
     if (user?.username) {
@@ -128,10 +153,10 @@ export default function CaregiverScreen() {
       showToast(t("requestSent"));
       loadAll();
     } catch (err: any) {
-      const msg = err?.message || "";
+      const msg = (err?.message || "").toLowerCase();
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      if (msg.includes("not found") || msg.includes("User not found")) showToast(t("userNotFound"));
-      else if (msg.includes("Already connected")) showToast(t("alreadyConnectedMsg"));
+      if (msg.includes("not found")) showToast(t("userNotFound"));
+      else if (msg.includes("already connected")) showToast(t("alreadyConnectedMsg"));
       else if (msg.includes("pending")) showToast(t("alreadyRequestedMsg"));
       else if (msg.includes("yourself")) showToast(t("cannotAddSelfMsg"));
       else showToast(t("error"));
@@ -145,6 +170,7 @@ export default function CaregiverScreen() {
       await apiRequest("POST", "/api/connections/respond", { connectionId: connId, accept });
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       loadAll();
+      refreshPendingCount();
     } catch {
       showToast(t("error"));
     }
@@ -246,6 +272,9 @@ export default function CaregiverScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 90 + webBottomInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+        }
       >
         <View style={styles.idCard}>
           <View style={{ flex: 1 }}>

@@ -1,0 +1,29 @@
+Make these changes to fix the friend connection system:
+
+1. **server/routes.ts** — Move `PUT /api/medications/reorder` route ABOVE `PUT /api/medications/:id`. The `:id` param catches "reorder" as an ID and returns 404.
+
+2. **server/routes.ts** — Add this route BEFORE `GET /api/connections`:
+app.get("/api/connections/pending-count", requireAuth, async (req, res) => {
+  try {
+    const conns = await storage.getConnections(req.session.userId!);
+    const count = conns.filter(c => c.status === "pending" && c.targetId === req.session.userId).length;
+    res.json({ count });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
+3. **server/routes.ts** — In `POST /api/invites/accept`, after createConnection, set status to accepted immediately:
+const conn = await storage.createConnection(req.session.userId!, invite.userId, nickname);
+const accepted = await storage.updateConnectionStatus(conn.id, "accepted");
+res.json(accepted);
+
+4. **server/storage.ts** — Add missing methods to IStorage interface: `getDoseLogById(id: string): Promise<DoseLog | undefined>`, `getConnectionById(id: string): Promise<Connection | undefined>`, `getNudgeById(id: string): Promise<Nudge | undefined>`
+
+5. **app/(tabs)/caregiver.tsx** — Add RefreshControl (pull-to-refresh) to the ScrollView. Add 10-second auto-polling via setInterval(loadAll, 10000) in useEffect with cleanup. Change the sequential for...of loop that fetches friend summaries to use Promise.allSettled (parallel fetch). Fix toast timer overlap by clearing previous timeout before setting new one. Make error string matching case-insensitive. After handleRespond succeeds, also call refreshPendingCount().
+
+6. **contexts/AuthContext.tsx** — Add `pendingRequestCount` state and a `refreshPendingCount` function that calls GET /api/connections/pending-count. Poll every 15 seconds when user is logged in. Expose both in the context value.
+
+7. **app/(tabs)/_layout.tsx** — Import useAuth, get pendingRequestCount, add `tabBarBadge: pendingRequestCount > 0 ? pendingRequestCount : undefined` to the caregiver tab options.
+
+These fixes make the friend-add-by-username flow actually visible to the recipient (auto-polling + badge), fix the medication reorder silent failure, and fix invite codes creating pending instead of accepted connections.
