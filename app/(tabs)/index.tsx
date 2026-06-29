@@ -10,6 +10,8 @@ import { useMedications, ScheduleItem, TimeBlock, getDoseStatus, DoseStatus } fr
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { translateScheduleLabel } from "@/lib/schedule-label";
+import { getApiUrl } from "@/lib/query-client";
+import { fetch as expoFetch } from "expo/fetch";
 
 const BLOCK_ICONS: Record<TimeBlock, keyof typeof Ionicons.glyphMap> = {
   morning: "sunny",
@@ -260,6 +262,36 @@ export default function TodayScreen() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [streak, setStreak] = useState(0);
+
+  const fetchStreak = useCallback(async () => {
+    if (!user) return;
+    try {
+      const baseUrl = getApiUrl();
+      const res = await expoFetch(new URL(`/api/summary/${user.id}`, baseUrl).toString(), { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setStreak(data.streak || 0);
+      }
+    } catch {}
+  }, [user]);
+
+  useEffect(() => { fetchStreak(); }, [fetchStreak]);
+
+  const MILESTONES = [100, 60, 30, 14, 7] as const;
+  const milestoneKeys: Record<number, string> = {
+    7: 'streakMilestone7', 14: 'streakMilestone14', 30: 'streakMilestone30',
+    60: 'streakMilestone60', 100: 'streakMilestone100',
+  };
+
+  const checkMilestone = useCallback((newStreak: number) => {
+    for (const m of MILESTONES) {
+      if (newStreak === m) {
+        Alert.alert(t('streakMilestoneTitle' as any), t(milestoneKeys[m] as any));
+        break;
+      }
+    }
+  }, [t]);
 
   const schedule = getTodaySchedule();
   const blockSchedule = getTodayScheduleByBlock();
@@ -323,7 +355,21 @@ export default function TodayScreen() {
     const log = await quickLogDose(item.medication.id, item.scheduledTime);
     const timer = setTimeout(() => setUndoState(null), 5000);
     setUndoState({ logId: log.id, medName: item.medication.name, timer });
-  }, [quickLogDose, undoState]);
+
+    setTimeout(async () => {
+      if (!user) return;
+      try {
+        const baseUrl = getApiUrl();
+        const res = await expoFetch(new URL(`/api/summary/${user.id}`, baseUrl).toString(), { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          const newStreak = data.streak || 0;
+          setStreak(newStreak);
+          checkMilestone(newStreak);
+        }
+      } catch {}
+    }, 500);
+  }, [quickLogDose, undoState, fetchStreak, checkMilestone]);
 
   const handleUndoTaken = useCallback(async (item: ScheduleItem) => {
     Alert.alert(
@@ -384,6 +430,12 @@ export default function TodayScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.greeting}>{greeting}</Text>
         </View>
+        {streak > 0 && (
+          <View style={styles.streakBadge}>
+            <Text style={styles.streakIcon}>🔥</Text>
+            <Text style={styles.streakText}>{streak}{t('streakDays' as any)}</Text>
+          </View>
+        )}
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -510,6 +562,24 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 22,
     color: Colors.text,
+  },
+  streakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 8,
+    gap: 4,
+  },
+  streakIcon: {
+    fontSize: 14,
+  },
+  streakText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: "#D97706",
   },
   addButton: {
     width: 40,
