@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, Pressable, Alert, Platform, PanResponder, Dimensions } from "react-native";
+import { StyleSheet, Text, View, Pressable, Alert, Platform, PanResponder } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
