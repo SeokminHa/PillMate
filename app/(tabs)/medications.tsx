@@ -8,7 +8,7 @@ import React, { useState, useRef, useCallback, useMemo } from "react";
 import Colors from "@/constants/colors";
 import { useMedications, Medication } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { translateScheduleLabel } from "@/lib/schedule-label";
 
 const CARD_HEIGHT = 90;
 const CARD_GAP = 12;
@@ -73,7 +73,7 @@ function StaticMedicationCard({ item, index }: {
             {(item.timeEntries || []).map((entry, i) => (
               <View key={i} style={styles.timeBadge}>
                 <Text style={styles.timeBadgeText}>
-                  {entry.label || formatTime(entry.time)}
+                  {translateScheduleLabel(entry, t) || formatTime(entry.time)}
                 </Text>
               </View>
             ))}
@@ -250,18 +250,10 @@ function DraggableList({ medications, reorderMedications }: {
 export default function MedicationsScreen() {
   const insets = useSafeAreaInsets();
   const { medications, reorderMedications } = useMedications();
-  const { t, language, setLanguage } = useLanguage();
-  const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const [isReordering, setIsReordering] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-
-  const handleLogout = () => {
-    Alert.alert(t('logout'), '', [
-      { text: t('cancel'), style: 'cancel' },
-      { text: t('logout'), style: 'destructive', onPress: () => logout() },
-    ]);
-  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -338,32 +330,6 @@ export default function MedicationsScreen() {
               </View>
               <Text style={styles.emptyTitle}>{t('noMedsAdded')}</Text>
               <Text style={styles.emptySubtitle}>{t('tapToAdd')}</Text>
-            </View>
-          )}
-          ListFooterComponent={() => (
-            <View style={styles.settingsSection}>
-              {user && (
-                <View style={styles.profileRow}>
-                  <View style={styles.profileInfo}>
-                    <View style={styles.profileAvatar}>
-                      <Text style={styles.profileAvatarText}>{user.displayName.charAt(0)}</Text>
-                    </View>
-                    <View>
-                      <Text style={styles.profileName}>{user.displayName}</Text>
-                      <Text style={styles.profileUsername}>@{user.username}</Text>
-                    </View>
-                  </View>
-                </View>
-              )}
-              <Pressable style={styles.settingsItem} onPress={() => setLanguage(language === 'ko' ? 'en' : 'ko')}>
-                <Ionicons name="globe-outline" size={20} color={Colors.textSecondary} />
-                <Text style={styles.settingsItemText}>{t('language')}</Text>
-                <Text style={styles.settingsItemValue}>{language === 'ko' ? '한국어' : 'English'}</Text>
-              </Pressable>
-              <Pressable style={styles.settingsItem} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
-                <Text style={[styles.settingsItemText, { color: Colors.danger }]}>{t('logout')}</Text>
-              </Pressable>
             </View>
           )}
         />

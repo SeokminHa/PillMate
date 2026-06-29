@@ -12,7 +12,7 @@ export interface IStorage {
   createUser(data: { username: string; password: string; displayName: string; timezone?: string }): Promise<User>;
   getUserById(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  updateUser(id: string, data: Partial<Pick<User, 'displayName' | 'timezone'>>): Promise<User | undefined>;
+  updateUser(id: string, data: Partial<Pick<User, 'displayName' | 'timezone' | 'username'>>): Promise<User | undefined>;
 
   getMedications(userId: string): Promise<(Medication & { timeEntries: MedicationTime[] })[]>;
   getMedication(id: string): Promise<(Medication & { timeEntries: MedicationTime[] }) | undefined>;
@@ -109,7 +109,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async updateUser(id: string, data: Partial<Pick<User, 'displayName' | 'timezone'>>): Promise<User | undefined> {
+  async updateUser(id: string, data: Partial<Pick<User, 'displayName' | 'timezone' | 'username'>>): Promise<User | undefined> {
     const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return user;
   }

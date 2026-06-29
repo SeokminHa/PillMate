@@ -9,6 +9,7 @@ import Colors from "@/constants/colors";
 import { useMedications, ScheduleItem, TimeBlock, getDoseStatus, DoseStatus } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { translateScheduleLabel } from "@/lib/schedule-label";
 
 const BLOCK_ICONS: Record<TimeBlock, keyof typeof Ionicons.glyphMap> = {
   morning: "sunny",
@@ -103,7 +104,7 @@ function MedicationCard({ item, onQuickLog, onUndoTaken, isDuplicate }: {
     ? `${item.medication.dosageAmount} ${unitLabel}`
     : '';
 
-  const displayTime = item.timeEntry?.label || formatTime(item.scheduledTime);
+  const displayTime = translateScheduleLabel(item.timeEntry, t) || formatTime(item.scheduledTime);
   const mealLabel = item.timeEntry?.mealTiming === 'before' ? t('beforeMeal')
     : item.timeEntry?.mealTiming === 'after' ? t('afterMeal')
     : item.timeEntry?.mealTiming === 'during' ? t('duringMeal')
@@ -291,7 +292,7 @@ export default function TodayScreen() {
 
   const handleQuickLog = useCallback(async (item: ScheduleItem) => {
     if (isDuplicateDose(item.medication.id, item.scheduledTime)) {
-      const displayTime = item.timeEntry?.label || formatTime(item.scheduledTime);
+      const displayTime = translateScheduleLabel(item.timeEntry, t) || formatTime(item.scheduledTime);
       Alert.alert(
         t('duplicateWarning'),
         `${item.medication.name} (${displayTime})\n\n${t('duplicateMessage')}`,

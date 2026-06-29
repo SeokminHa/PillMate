@@ -102,8 +102,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/auth/profile", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { displayName, timezone } = req.body;
-      const user = await storage.updateUser(req.session.userId!, { displayName, timezone });
+      const { displayName, timezone, username } = req.body;
+      const updateData: Partial<{ displayName: string; timezone: string; username: string }> = {};
+      if (displayName !== undefined) updateData.displayName = displayName;
+      if (timezone !== undefined) updateData.timezone = timezone;
+      if (username !== undefined) {
+        const normalized = String(username).trim();
+        if (!normalized) return res.status(400).json({ message: "Username required" });
+        const existing = await storage.getUserByUsername(normalized);
+        if (existing && existing.id !== req.session.userId) {
+          return res.status(409).json({ message: "Username already taken" });
+        }
+        updateData.username = normalized;
+      }
+      const user = await storage.updateUser(req.session.userId!, updateData);
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json({ id: user.id, username: user.username, displayName: user.displayName, timezone: user.timezone });
     } catch (err: any) {

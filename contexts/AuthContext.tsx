@@ -15,7 +15,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, displayName: string, timezone?: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName?: string; timezone?: string }) => Promise<void>;
+  updateProfile: (data: { displayName?: string; timezone?: string; username?: string }) => Promise<void>;
   pendingRequestCount: number;
   refreshPendingCount: () => Promise<void>;
 }
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const updateProfile = useCallback(async (data: { displayName?: string; timezone?: string }) => {
+  const updateProfile = useCallback(async (data: { displayName?: string; timezone?: string; username?: string }) => {
     const res = await apiRequest('PUT', '/api/auth/profile', data);
     const updated = await res.json();
     setUser(updated);

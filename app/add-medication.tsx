@@ -10,6 +10,7 @@ import React from "react";
 import Colors from "@/constants/colors";
 import { useMedications, MEDICATION_COLORS, TimeEntry, DosageUnit, MealTiming } from "@/contexts/MedicationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { translateScheduleLabel } from "@/lib/schedule-label";
 
 function formatTimeDisplay(time: string): string {
   const [h, m] = time.split(":");
@@ -63,14 +64,14 @@ export default function AddMedicationScreen() {
     { key: 'after', labelKey: 'afterMeal' },
   ];
 
-  const togglePresetTime = (time: string, label: string) => {
+  const togglePresetTime = (time: string, blockKey: string) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     if (validationError) setValidationError(null);
     const exists = timeEntries.find(e => e.time === time && !e.mealTiming);
     if (exists) {
       setTimeEntries(prev => prev.filter(e => !(e.time === time && !e.mealTiming)));
     } else {
-      setTimeEntries(prev => [...prev, { time, label }]);
+      setTimeEntries(prev => [...prev, { time, label: `block:${blockKey}` }]);
     }
   };
 
@@ -86,9 +87,6 @@ export default function AddMedicationScreen() {
 
   const addMealTime = (meal: typeof MEAL_OPTIONS[number]) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
-    const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
-    const mealLabel = t(meal.labelKey);
-    const timingText = timingLabel ? t(timingLabel.labelKey) : '';
 
     let adjustedTime = meal.time;
     if (selectedMealTiming === 'before') {
@@ -101,7 +99,7 @@ export default function AddMedicationScreen() {
       adjustedTime = `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`;
     }
 
-    const label = `${mealLabel} ${timingText}`;
+    const label = `meal:${meal.meal}:${selectedMealTiming}`;
     const exists = timeEntries.find(e => e.label === label);
     if (exists) {
       setTimeEntries(prev => prev.filter(e => e.label !== label));
@@ -287,7 +285,7 @@ export default function AddMedicationScreen() {
               return (
                 <Pressable
                   key={item.key}
-                  onPress={() => togglePresetTime(item.time, t(item.labelKey))}
+                  onPress={() => togglePresetTime(item.time, item.labelKey)}
                   style={[styles.timeBlockChip, isSelected && styles.timeBlockChipSelected]}
                 >
                   <Ionicons
@@ -341,10 +339,8 @@ export default function AddMedicationScreen() {
 
               <View style={styles.mealGrid}>
                 {MEAL_OPTIONS.map(meal => {
-                  const timingLabel = MEAL_TIMING_OPTIONS.find(o => o.key === selectedMealTiming);
                   const mealLabel = t(meal.labelKey);
-                  const timingText = timingLabel ? t(timingLabel.labelKey) : '';
-                  const fullLabel = `${mealLabel} ${timingText}`;
+                  const fullLabel = `meal:${meal.meal}:${selectedMealTiming}`;
                   const isSelected = !!timeEntries.find(e => e.label === fullLabel);
                   return (
                     <Pressable
@@ -421,7 +417,7 @@ export default function AddMedicationScreen() {
                 <View key={index} style={styles.selectedTimeChip}>
                   <View style={styles.selectedTimeInfo}>
                     <Text style={styles.selectedTimeText}>
-                      {entry.label || formatTimeDisplay(entry.time)}
+                      {translateScheduleLabel(entry, t) || formatTimeDisplay(entry.time)}
                     </Text>
                     {entry.mealTiming && (
                       <Text style={styles.selectedTimeSub}>

@@ -43,8 +43,8 @@ async function seed() {
     color: "#EF4444", sortOrder: 0,
   }).returning();
   await db.insert(medicationTimes).values([
-    { medicationId: med1.id, time: "08:00", label: "아침", mealTiming: "after" },
-    { medicationId: med1.id, time: "20:00", label: "저녁", mealTiming: "after" },
+    { medicationId: med1.id, time: "08:00", label: "meal:breakfast:after", mealTiming: "after" },
+    { medicationId: med1.id, time: "20:00", label: "meal:dinner:after", mealTiming: "after" },
   ]);
 
   const [med2] = await db.insert(medications).values({
@@ -52,7 +52,7 @@ async function seed() {
     color: "#F59E0B", sortOrder: 1,
   }).returning();
   await db.insert(medicationTimes).values([
-    { medicationId: med2.id, time: "09:00", label: "아침", mealTiming: "during" },
+    { medicationId: med2.id, time: "09:00", label: "meal:breakfast:during", mealTiming: "during" },
   ]);
 
   const [med3] = await db.insert(medications).values({
@@ -60,7 +60,7 @@ async function seed() {
     color: "#10B981", sortOrder: 2,
   }).returning();
   await db.insert(medicationTimes).values([
-    { medicationId: med3.id, time: "12:00", label: "점심", mealTiming: "after" },
+    { medicationId: med3.id, time: "12:00", label: "meal:lunch:after", mealTiming: "after" },
   ]);
 
   await db.insert(doseLogs).values([
@@ -73,8 +73,8 @@ async function seed() {
     color: "#3B82F6", sortOrder: 0,
   }).returning();
   await db.insert(medicationTimes).values([
-    { medicationId: med4.id, time: "07:00", label: "아침", mealTiming: "before" },
-    { medicationId: med4.id, time: "18:00", label: "저녁", mealTiming: "before" },
+    { medicationId: med4.id, time: "07:00", label: "meal:breakfast:before", mealTiming: "before" },
+    { medicationId: med4.id, time: "18:00", label: "meal:dinner:before", mealTiming: "before" },
   ]);
 
   const [med5] = await db.insert(medications).values({
@@ -82,7 +82,7 @@ async function seed() {
     color: "#8B5CF6", sortOrder: 1,
   }).returning();
   await db.insert(medicationTimes).values([
-    { medicationId: med5.id, time: "09:00", label: "아침", mealTiming: "after" },
+    { medicationId: med5.id, time: "09:00", label: "meal:breakfast:after", mealTiming: "after" },
   ]);
 
   await db.insert(doseLogs).values([

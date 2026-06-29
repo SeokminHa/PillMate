@@ -55,8 +55,8 @@ const AVATAR_COLORS = ["#F59E0B", "#3B82F6", "#8B5CF6", "#6366F1", "#10B981", "#
 
 export default function CaregiverScreen() {
   const insets = useSafeAreaInsets();
-  const { t } = useLanguage();
-  const { user, refreshPendingCount } = useAuth();
+  const { t, language, setLanguage } = useLanguage();
+  const { user, refreshPendingCount, updateProfile, logout } = useAuth();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
 
@@ -69,6 +69,9 @@ export default function CaregiverScreen() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [editingId, setEditingId] = useState(false);
+  const [idInput, setIdInput] = useState("");
+  const [savingId, setSavingId] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -139,6 +142,31 @@ export default function CaregiverScreen() {
     if (user?.username) {
       await Clipboard.setStringAsync(user.username);
       showToast(t("idCopied"));
+    }
+  };
+
+  const startEditId = () => {
+    setIdInput(user?.username || "");
+    setEditingId(true);
+  };
+
+  const handleSaveId = async () => {
+    const next = idInput.trim();
+    if (!next) { showToast(t("idEmptyMsg")); return; }
+    if (next === user?.username) { setEditingId(false); return; }
+    setSavingId(true);
+    try {
+      await updateProfile({ username: next });
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditingId(false);
+      showToast(t("idChanged"));
+    } catch (err: any) {
+      const msg = (err?.message || "").toLowerCase();
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (msg.includes("taken") || msg.includes("409")) showToast(t("idTaken"));
+      else showToast(t("error"));
+    } finally {
+      setSavingId(false);
     }
   };
 
@@ -279,17 +307,67 @@ export default function CaregiverScreen() {
         <View style={styles.idCard}>
           <View style={{ flex: 1 }}>
             <Text style={styles.idLabel}>{t("myId")}</Text>
-            <Text style={styles.idValue} testID="my-id-value">{user?.username || "-"}</Text>
+            {editingId ? (
+              <TextInput
+                style={styles.idInput}
+                value={idInput}
+                onChangeText={setIdInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                editable={!savingId}
+                testID="edit-id-input"
+              />
+            ) : (
+              <Text style={styles.idValue} testID="my-id-value">{user?.username || "-"}</Text>
+            )}
             <Text style={styles.idDesc}>{t("myIdDesc")}</Text>
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.copyIdBtn, pressed && { opacity: 0.85 }]}
-            onPress={handleCopyId}
-            testID="copy-id-button"
-          >
-            <Ionicons name="copy-outline" size={16} color="#fff" />
-            <Text style={styles.copyIdBtnText}>{t("copyId")}</Text>
-          </Pressable>
+          {editingId ? (
+            <View style={styles.idEditActions}>
+              <Pressable
+                style={({ pressed }) => [styles.copyIdBtn, pressed && { opacity: 0.85 }]}
+                onPress={handleSaveId}
+                disabled={savingId}
+                testID="save-id-button"
+              >
+                {savingId ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                    <Text style={styles.copyIdBtnText}>{t("save")}</Text>
+                  </>
+                )}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.idCancelBtn, pressed && { opacity: 0.85 }]}
+                onPress={() => setEditingId(false)}
+                disabled={savingId}
+              >
+                <Text style={styles.idCancelBtnText}>{t("cancel")}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.idEditActions}>
+              <Pressable
+                style={({ pressed }) => [styles.copyIdBtn, pressed && { opacity: 0.85 }]}
+                onPress={handleCopyId}
+                testID="copy-id-button"
+              >
+                <Ionicons name="copy-outline" size={16} color="#fff" />
+                <Text style={styles.copyIdBtnText}>{t("copyId")}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.idEditBtn, pressed && { opacity: 0.85 }]}
+                onPress={startEditId}
+                testID="edit-id-button"
+              >
+                <Ionicons name="pencil" size={14} color={Colors.primary} />
+                <Text style={styles.idEditBtnText}>{t("editId")}</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
         <View style={styles.addCard}>
@@ -544,6 +622,34 @@ export default function CaregiverScreen() {
             <Text style={styles.emptySubtitle}>{t("addFriendDesc")}</Text>
           </View>
         )}
+
+        <View style={styles.settingsSection}>
+          <Text style={styles.settingsHeader}>{t("settings")}</Text>
+          {user && (
+            <View style={styles.profileRow}>
+              <View style={styles.profileAvatar}>
+                <Text style={styles.profileAvatarText}>{user.displayName.charAt(0)}</Text>
+              </View>
+              <View>
+                <Text style={styles.profileName}>{user.displayName}</Text>
+                <Text style={styles.profileUsername}>@{user.username}</Text>
+              </View>
+            </View>
+          )}
+          <Pressable
+            style={styles.settingsItem}
+            onPress={() => setLanguage(language === "ko" ? "en" : "ko")}
+            testID="language-toggle"
+          >
+            <Ionicons name="globe-outline" size={20} color={Colors.textSecondary} />
+            <Text style={styles.settingsItemText}>{t("language")}</Text>
+            <Text style={styles.settingsItemValue}>{language === "ko" ? "한국어" : "English"}</Text>
+          </Pressable>
+          <Pressable style={styles.settingsItem} onPress={() => logout()} testID="logout-button">
+            <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
+            <Text style={[styles.settingsItemText, { color: Colors.danger }]}>{t("logout")}</Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       {toast && (
@@ -577,6 +683,44 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF33", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
   },
   copyIdBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  idEditActions: { gap: 8, alignItems: "flex-end" },
+  idEditBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "#FFFFFF", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+  },
+  idEditBtnText: { color: Colors.primary, fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  idCancelBtn: {
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#FFFFFF22",
+  },
+  idCancelBtnText: { color: "#fff", fontFamily: "Inter_500Medium", fontSize: 12 },
+  idInput: {
+    backgroundColor: "#FFFFFF", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    fontFamily: "Inter_700Bold", fontSize: 20, color: Colors.text, marginVertical: 4,
+  },
+
+  settingsSection: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginTop: 8, gap: 4,
+  },
+  settingsHeader: {
+    fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.textSecondary,
+    marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5,
+  },
+  profileRow: {
+    flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border, marginBottom: 4,
+  },
+  profileAvatar: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary,
+    alignItems: "center", justifyContent: "center",
+  },
+  profileAvatarText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 18 },
+  profileName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.text },
+  profileUsername: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textSecondary },
+  settingsItem: {
+    flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12,
+  },
+  settingsItemText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 15, color: Colors.text },
+  settingsItemValue: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textSecondary },
 
   addCard: {
     backgroundColor: Colors.surface, borderRadius: 16, padding: 16, gap: 4,
