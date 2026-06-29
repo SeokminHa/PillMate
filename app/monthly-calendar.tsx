@@ -19,10 +19,17 @@ type DayStatus = 'all' | 'partial' | 'none' | 'future' | 'empty';
 
 type StatusKind = 'all' | 'partial' | 'none';
 
-const STATUS_CONFIG: Record<StatusKind, { bg: string; icon: React.ComponentProps<typeof Ionicons>["name"] }> = {
-  all: { bg: Colors.success, icon: 'checkmark' },
-  partial: { bg: Colors.warning, icon: 'remove' },
-  none: { bg: Colors.danger, icon: 'close' },
+type StatusStyle = {
+  bg: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"] | null;
+  iconColor: string;
+  borderColor?: string;
+};
+
+const STATUS_CONFIG: Record<StatusKind, StatusStyle> = {
+  all: { bg: Colors.success, icon: 'checkmark', iconColor: '#FFF' },
+  partial: { bg: Colors.warning, icon: 'remove', iconColor: '#FFF' },
+  none: { bg: 'transparent', icon: null, iconColor: 'transparent', borderColor: Colors.border },
 };
 
 function StatusBadge({ status, size = 18 }: { status: DayStatus; size?: number }) {
@@ -35,11 +42,13 @@ function StatusBadge({ status, size = 18 }: { status: DayStatus; size?: number }
         height: size,
         borderRadius: size / 2,
         backgroundColor: cfg.bg,
+        borderWidth: cfg.borderColor ? 1.5 : 0,
+        borderColor: cfg.borderColor,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Ionicons name={cfg.icon} size={Math.round(size * 0.66)} color="#FFF" />
+      {cfg.icon && <Ionicons name={cfg.icon} size={Math.round(size * 0.66)} color={cfg.iconColor} />}
     </View>
   );
 }
@@ -623,7 +632,7 @@ const styles = StyleSheet.create({
     color: Colors.success,
   },
   dayDetailCountNone: {
-    color: Colors.danger,
+    color: Colors.textTertiary,
   },
   legend: {
     flexDirection: "row",

@@ -76,11 +76,28 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  if (finalStatus !== 'granted') return null;
+  if (finalStatus !== 'granted') {
+    console.warn('[notifications] Permission not granted; cannot register for push.');
+    return null;
+  }
 
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  if (!projectId) return null;
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId ??
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+  if (!projectId) {
+    console.warn(
+      '[notifications] Missing Expo projectId. Set expo.extra.eas.projectId in app.json ' +
+        '(or EXPO_PUBLIC_EAS_PROJECT_ID) — push tokens cannot be obtained without it.',
+    );
+    return null;
+  }
 
-  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-  return token;
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    return token;
+  } catch (err) {
+    console.warn('[notifications] Failed to get Expo push token:', err);
+    return null;
+  }
 }
