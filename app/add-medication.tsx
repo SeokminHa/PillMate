@@ -413,7 +413,7 @@ export default function AddMedicationScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>{t('selectedTimes')} ({timeEntries.length})</Text>
             <View style={styles.selectedTimesContainer}>
-              {timeEntries.sort((a, b) => a.time.localeCompare(b.time)).map((entry, index) => (
+              {[...timeEntries].sort((a, b) => a.time.localeCompare(b.time)).map((entry, index) => (
                 <View key={index} style={styles.selectedTimeChip}>
                   <View style={styles.selectedTimeInfo}>
                     <Text style={styles.selectedTimeText}>

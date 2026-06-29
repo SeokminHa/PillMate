@@ -2,9 +2,10 @@ import { eq, and, or, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, medications, medicationTimes, doseLogs,
-  connections, inviteCodes, nudges,
+  connections, inviteCodes, nudges, groups, groupMembers,
   type User, type InsertUser, type Medication, type MedicationTime,
   type DoseLog, type Connection, type InviteCode, type Nudge,
+  type Group, type GroupMember,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
@@ -48,6 +49,26 @@ export interface IStorage {
   getNudges(userId: string): Promise<(Nudge & { fromUser: User })[]>;
   getNudgeById(id: string): Promise<Nudge | undefined>;
   markNudgeRead(id: string): Promise<void>;
+
+  // Push token
+  updatePushToken(userId: string, token: string | null): Promise<void>;
+  getUserPushToken(userId: string): Promise<string | null>;
+
+  // Streak
+  getUserStreak(userId: string): Promise<number>;
+
+  // Groups
+  createGroup(name: string, createdBy: string): Promise<Group>;
+  getGroupById(id: string): Promise<Group | undefined>;
+  getGroupsForUser(userId: string): Promise<(Group & { members: (GroupMember & { user: User })[] })[]>;
+  deleteGroup(id: string): Promise<void>;
+  updateGroupName(id: string, name: string): Promise<Group | undefined>;
+  addGroupMember(groupId: string, userId: string, invitedBy: string, role?: string): Promise<GroupMember>;
+  updateGroupMemberStatus(id: string, status: string): Promise<GroupMember | undefined>;
+  removeGroupMember(id: string): Promise<void>;
+  getGroupMemberById(id: string): Promise<GroupMember | undefined>;
+  getGroupMembers(groupId: string): Promise<(GroupMember & { user: User })[]>;
+  getPendingGroupInvites(userId: string): Promise<(GroupMember & { group: Group; inviter: User })[]>;
 
   getUserSummary(userId: string, date: string): Promise<{
     user: User;
@@ -426,6 +447,135 @@ export class DatabaseStorage implements IStorage {
       blockSummaries,
       items,
     };
+  }
+  // Push token methods
+  async updatePushToken(userId: string, token: string | null): Promise<void> {
+    await db.update(users).set({ pushToken: token }).where(eq(users.id, userId));
+  }
+
+  async getUserPushToken(userId: string): Promise<string | null> {
+    const [user] = await db.select({ pushToken: users.pushToken }).from(users).where(eq(users.id, userId));
+    return user?.pushToken || null;
+  }
+
+  // Streak (server-side port of MedicationContext.getStreak)
+  async getUserStreak(userId: string): Promise<number> {
+    const meds = await this.getMedications(userId);
+    if (meds.length === 0) return 0;
+
+    let streak = 0;
+    const today = new Date();
+
+    for (let i = 0; i <= 365; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayLogs = await this.getDoseLogs(userId, dateStr);
+
+      let allTaken = true;
+      let anyActive = false;
+
+      for (const med of meds) {
+        const createdDate = new Date(med.createdAt).toISOString().split("T")[0];
+        if (createdDate > dateStr) continue;
+        anyActive = true;
+        for (const entry of med.timeEntries) {
+          const taken = dayLogs.some(l => l.medicationId === med.id && l.scheduledTime === entry.time);
+          if (!taken) { allTaken = false; break; }
+        }
+        if (!allTaken) break;
+      }
+
+      if (!anyActive) continue;
+      if (i === 0 && !allTaken) continue;
+      if (allTaken) { streak++; }
+      else if (i > 0) { break; }
+    }
+    return streak;
+  }
+
+  // Group methods
+  async createGroup(name: string, createdBy: string): Promise<Group> {
+    const [group] = await db.insert(groups).values({ name, createdBy }).returning();
+    await db.insert(groupMembers).values({
+      groupId: group.id,
+      userId: createdBy,
+      role: "admin",
+      status: "accepted",
+      invitedBy: createdBy,
+    });
+    return group;
+  }
+
+  async getGroupById(id: string): Promise<Group | undefined> {
+    const [group] = await db.select().from(groups).where(eq(groups.id, id));
+    return group;
+  }
+
+  async getGroupsForUser(userId: string): Promise<(Group & { members: (GroupMember & { user: User })[] })[]> {
+    const myMemberships = await db.select().from(groupMembers)
+      .where(and(eq(groupMembers.userId, userId), eq(groupMembers.status, "accepted")));
+
+    const result = [];
+    for (const m of myMemberships) {
+      const [group] = await db.select().from(groups).where(eq(groups.id, m.groupId));
+      if (!group) continue;
+      const members = await this.getGroupMembers(m.groupId);
+      result.push({ ...group, members });
+    }
+    return result;
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    await db.delete(groups).where(eq(groups.id, id));
+  }
+
+  async updateGroupName(id: string, name: string): Promise<Group | undefined> {
+    const [group] = await db.update(groups).set({ name }).where(eq(groups.id, id)).returning();
+    return group;
+  }
+
+  async addGroupMember(groupId: string, userId: string, invitedBy: string, role: string = "member"): Promise<GroupMember> {
+    const [member] = await db.insert(groupMembers).values({
+      groupId, userId, role, invitedBy, status: "pending",
+    }).returning();
+    return member;
+  }
+
+  async updateGroupMemberStatus(id: string, status: string): Promise<GroupMember | undefined> {
+    const [member] = await db.update(groupMembers).set({ status }).where(eq(groupMembers.id, id)).returning();
+    return member;
+  }
+
+  async removeGroupMember(id: string): Promise<void> {
+    await db.delete(groupMembers).where(eq(groupMembers.id, id));
+  }
+
+  async getGroupMemberById(id: string): Promise<GroupMember | undefined> {
+    const [member] = await db.select().from(groupMembers).where(eq(groupMembers.id, id));
+    return member;
+  }
+
+  async getGroupMembers(groupId: string): Promise<(GroupMember & { user: User })[]> {
+    const members = await db.select().from(groupMembers).where(eq(groupMembers.groupId, groupId));
+    const result = [];
+    for (const m of members) {
+      const [user] = await db.select().from(users).where(eq(users.id, m.userId));
+      if (user) result.push({ ...m, user });
+    }
+    return result;
+  }
+
+  async getPendingGroupInvites(userId: string): Promise<(GroupMember & { group: Group; inviter: User })[]> {
+    const pending = await db.select().from(groupMembers)
+      .where(and(eq(groupMembers.userId, userId), eq(groupMembers.status, "pending")));
+    const result = [];
+    for (const m of pending) {
+      const [group] = await db.select().from(groups).where(eq(groups.id, m.groupId));
+      const [inviter] = await db.select().from(users).where(eq(users.id, m.invitedBy));
+      if (group && inviter) result.push({ ...m, group, inviter });
+    }
+    return result;
   }
 }
 

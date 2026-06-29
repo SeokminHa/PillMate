@@ -37,8 +37,22 @@ interface UserSummary {
   pending: number;
   missed: number;
   total: number;
+  streak?: number;
   blockSummaries: { block: string; completed: number; total: number }[];
   items: SummaryItem[];
+}
+
+interface GroupData {
+  id: string;
+  name: string;
+  createdBy: string;
+  isAdmin: boolean;
+  members: { id: string; userId: string; displayName: string; role: string; status: string }[];
+}
+
+interface GroupDashboard {
+  group: { id: string; name: string };
+  members: { userId: string; displayName: string; role: string; summary: { completed: number; pending: number; missed: number; total: number; streak: number } }[];
 }
 
 interface NudgeData {
@@ -63,6 +77,9 @@ export default function CaregiverScreen() {
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [summaries, setSummaries] = useState<Record<string, UserSummary>>({});
   const [messages, setMessages] = useState<NudgeData[]>([]);
+  const [groups, setGroups] = useState<GroupData[]>([]);
+  const [groupDashboards, setGroupDashboards] = useState<Record<string, GroupDashboard>>({});
+  const [groupPendingInvites, setGroupPendingInvites] = useState<{ id: string; groupName: string; inviterName: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [friendId, setFriendId] = useState("");
   const [sending, setSending] = useState(false);
@@ -72,6 +89,10 @@ export default function CaregiverScreen() {
   const [editingId, setEditingId] = useState(false);
   const [idInput, setIdInput] = useState("");
   const [savingId, setSavingId] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [inviteGroupId, setInviteGroupId] = useState<string | null>(null);
+  const [inviteUsername, setInviteUsername] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -118,12 +139,40 @@ export default function CaregiverScreen() {
         const nData: NudgeData[] = await nRes.json();
         setMessages(nData);
       }
+
+      const gRes = await fetch(new URL("/api/groups", baseUrl).toString(), { credentials: "include" });
+      if (gRes.ok) {
+        const gData: GroupData[] = await gRes.json();
+        setGroups(gData);
+        const dashResults = await Promise.allSettled(
+          gData.map(async g => {
+            const dRes = await fetch(new URL(`/api/groups/${g.id}/dashboard`, baseUrl).toString(), { credentials: "include" });
+            if (!dRes.ok) throw new Error("dashboard fetch failed");
+            return { id: g.id, dashboard: (await dRes.json()) as GroupDashboard };
+          })
+        );
+        const newDash: Record<string, GroupDashboard> = {};
+        for (const r of dashResults) {
+          if (r.status === "fulfilled") newDash[r.value.id] = r.value.dashboard;
+        }
+        setGroupDashboards(newDash);
+
+        const gpRes = await fetch(new URL("/api/groups/pending-invites", baseUrl).toString(), { credentials: "include" });
+        if (gpRes.ok) {
+          const invData = await gpRes.json();
+          setGroupPendingInvites(invData.map((inv: any) => ({
+            id: inv.memberId,
+            groupName: inv.groupName,
+            inviterName: inv.inviterName,
+          })));
+        }
+      }
     } catch (err) {
       console.error("Failed to load connections:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     loadAll();
@@ -237,6 +286,75 @@ export default function CaregiverScreen() {
     } catch {
       showToast(t("error"));
     }
+  };
+
+  const handleCreateGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name || creatingGroup) return;
+    setCreatingGroup(true);
+    try {
+      await apiRequest("POST", "/api/groups", { name });
+      setNewGroupName("");
+      showToast(t("createGroup" as any));
+      loadAll();
+    } catch {
+      showToast(t("error"));
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = (groupId: string, groupName: string) => {
+    Alert.alert(t("deleteGroup" as any), t("deleteGroupConfirm" as any), [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("confirm"), style: "destructive", onPress: async () => {
+        try {
+          await apiRequest("DELETE", `/api/groups/${groupId}`);
+          loadAll();
+        } catch { showToast(t("error")); }
+      }},
+    ]);
+  };
+
+  const handleGroupInvite = async (groupId: string) => {
+    const uname = inviteUsername.trim();
+    if (!uname) return;
+    try {
+      await apiRequest("POST", `/api/groups/${groupId}/invite`, { username: uname });
+      setInviteUsername("");
+      setInviteGroupId(null);
+      showToast(t("requestSent"));
+      loadAll();
+    } catch (err: any) {
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("not found")) showToast(t("userNotFound"));
+      else if (msg.includes("already")) showToast(t("alreadyConnectedMsg"));
+      else if (msg.includes("yourself")) showToast(t("cannotAddSelfMsg"));
+      else showToast(t("error"));
+    }
+  };
+
+  const handleGroupInviteRespond = async (memberId: string, accept: boolean) => {
+    try {
+      await apiRequest("POST", "/api/groups/invites/respond", { memberId, accept });
+      loadAll();
+      refreshPendingCount();
+    } catch { showToast(t("error")); }
+  };
+
+  const handleGroupNudge = async (groupId: string) => {
+    try {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/nudge`, {});
+      const data = await res.json();
+      showToast(`${data.sent}${t("groupNudgeSent" as any)}`);
+    } catch { showToast(t("error")); }
+  };
+
+  const handleRemoveGroupMember = async (groupId: string, memberId: string) => {
+    try {
+      await apiRequest("DELETE", `/api/groups/${groupId}/members/${memberId}`);
+      loadAll();
+    } catch { showToast(t("error")); }
   };
 
   const getTimezoneLabel = (tz: string): string => {
@@ -494,8 +612,15 @@ export default function CaregiverScreen() {
                       <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] + "20" }]}>
                         <Text style={styles.avatarText}>{displayName.charAt(0)}</Text>
                       </View>
-                      <View>
-                        <Text style={styles.personName}>{displayName}</Text>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={styles.personName}>{displayName}</Text>
+                          {summary?.streak ? (
+                            <View style={styles.friendStreak}>
+                              <Text style={styles.friendStreakText}>🔥 {summary.streak}</Text>
+                            </View>
+                          ) : null}
+                        </View>
                         <Text style={styles.personTz}>{other.displayName} · {tzLabel}</Text>
                       </View>
                     </View>
@@ -613,7 +738,177 @@ export default function CaregiverScreen() {
           </View>
         )}
 
-        {connections.length === 0 && messages.length === 0 && (
+        {groupPendingInvites.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="mail-unread" size={16} color={Colors.warning} />
+              <Text style={styles.sectionTitle}>{t("groupInvites" as any)}</Text>
+              <View style={styles.badge}><Text style={styles.badgeText}>{groupPendingInvites.length}</Text></View>
+            </View>
+            {groupPendingInvites.map(inv => (
+              <View key={inv.id} style={styles.requestCard}>
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={styles.requestName}>{inv.groupName}</Text>
+                  <Text style={styles.requestDesc}>{inv.inviterName}{t("groupInvitedYou" as any)}</Text>
+                </View>
+                <View style={styles.requestActions}>
+                  <Pressable style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.8 }]} onPress={() => handleGroupInviteRespond(inv.id, false)}>
+                    <Text style={styles.rejectBtnText}>{t("reject")}</Text>
+                  </Pressable>
+                  <Pressable style={({ pressed }) => [styles.approveBtn, pressed && { opacity: 0.8 }]} onPress={() => handleGroupInviteRespond(inv.id, true)}>
+                    <Text style={styles.approveBtnText}>{t("approve")}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {groups.filter(g => g.members.some(m => m.userId === user?.id && m.status === "accepted")).length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="people-circle" size={16} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>{t("myGroups" as any)}</Text>
+            </View>
+            {groups.filter(g => g.members.some(m => m.userId === user?.id && m.status === "accepted")).map(group => {
+              const dash = groupDashboards[group.id];
+              const isExpanded = !collapsed[`group-${group.id}`];
+              return (
+                <View key={group.id} style={styles.personCard}>
+                  <Pressable
+                    style={styles.personHeader}
+                    onPress={() => setCollapsed(prev => ({ ...prev, [`group-${group.id}`]: !prev[`group-${group.id}`] }))}
+                  >
+                    <View style={styles.personInfo}>
+                      <View style={[styles.avatar, { backgroundColor: Colors.primaryBg }]}>
+                        <Ionicons name="people" size={20} color={Colors.primary} />
+                      </View>
+                      <View>
+                        <Text style={styles.personName}>{group.name}</Text>
+                        <Text style={styles.personTz}>{group.members.filter(m => m.status === "accepted").length} {t("member" as any)}</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                      {group.isAdmin && (
+                        <Pressable onPress={() => handleDeleteGroup(group.id, group.name)} hitSlop={10}>
+                          <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+                        </Pressable>
+                      )}
+                      <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color={Colors.textTertiary} />
+                    </View>
+                  </Pressable>
+
+                  {isExpanded && dash && (
+                    <>
+                      {dash.members.map(m => {
+                        const memberProgress = m.summary.total > 0 ? Math.round((m.summary.completed / m.summary.total) * 100) : 0;
+                        const statusColor = m.summary.missed > 0 ? Colors.danger : m.summary.pending > 0 ? Colors.warning : Colors.success;
+                        return (
+                          <View key={m.userId} style={styles.groupMemberRow}>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Text style={styles.pillName}>{m.displayName}</Text>
+                                {m.summary.streak > 0 && (
+                                  <View style={styles.friendStreak}>
+                                    <Text style={styles.friendStreakText}>🔥 {m.summary.streak}</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <View style={[styles.progressRow, { marginTop: 4 }]}>
+                                <View style={styles.progressBarBg}>
+                                  <View style={[styles.progressBarFill, { width: `${memberProgress}%` as any, backgroundColor: statusColor }]} />
+                                </View>
+                                <Text style={[styles.progressPercent, { color: statusColor }]}>{memberProgress}%</Text>
+                              </View>
+                            </View>
+                            {group.isAdmin && m.userId !== user?.id && (
+                              <Pressable
+                                onPress={() => {
+                                  const mem = group.members.find(gm => gm.userId === m.userId);
+                                  if (mem) handleRemoveGroupMember(group.id, mem.id);
+                                }}
+                                hitSlop={10}
+                              >
+                                <Ionicons name="close-circle-outline" size={18} color={Colors.textTertiary} />
+                              </Pressable>
+                            )}
+                          </View>
+                        );
+                      })}
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                        {group.isAdmin && (
+                          <Pressable
+                            style={({ pressed }) => [styles.groupActionBtn, pressed && { opacity: 0.85 }]}
+                            onPress={() => setInviteGroupId(inviteGroupId === group.id ? null : group.id)}
+                          >
+                            <Ionicons name="person-add-outline" size={14} color={Colors.primary} />
+                            <Text style={styles.groupActionText}>{t("inviteToGroup" as any)}</Text>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          style={({ pressed }) => [styles.groupActionBtn, { backgroundColor: Colors.warningBg }, pressed && { opacity: 0.85 }]}
+                          onPress={() => handleGroupNudge(group.id)}
+                        >
+                          <Ionicons name="megaphone-outline" size={14} color={Colors.warning} />
+                          <Text style={[styles.groupActionText, { color: Colors.warning }]}>{t("groupNudgeAll" as any)}</Text>
+                        </Pressable>
+                      </View>
+                      {inviteGroupId === group.id && (
+                        <View style={styles.addRow}>
+                          <TextInput
+                            style={styles.addInput}
+                            placeholder={t("friendIdPlaceholder")}
+                            placeholderTextColor={Colors.textTertiary}
+                            value={inviteUsername}
+                            onChangeText={setInviteUsername}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            onSubmitEditing={() => handleGroupInvite(group.id)}
+                            returnKeyType="send"
+                          />
+                          <Pressable
+                            style={({ pressed }) => [styles.sendBtn, !inviteUsername.trim() && styles.sendBtnDisabled, pressed && { opacity: 0.85 }]}
+                            onPress={() => handleGroupInvite(group.id)}
+                            disabled={!inviteUsername.trim()}
+                          >
+                            <Ionicons name="person-add" size={18} color="#fff" />
+                          </Pressable>
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <View style={styles.addCard}>
+          <Text style={styles.addTitle}>{t("createGroup" as any)}</Text>
+          <Text style={styles.addDesc}>{t("noGroupsDesc" as any)}</Text>
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.addInput}
+              placeholder={t("groupNamePlaceholder" as any)}
+              placeholderTextColor={Colors.textTertiary}
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              onSubmitEditing={handleCreateGroup}
+              returnKeyType="done"
+            />
+            <Pressable
+              style={({ pressed }) => [styles.sendBtn, (!newGroupName.trim() || creatingGroup) && styles.sendBtnDisabled, pressed && { opacity: 0.85 }]}
+              onPress={handleCreateGroup}
+              disabled={!newGroupName.trim() || creatingGroup}
+            >
+              {creatingGroup
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="add" size={18} color="#fff" />}
+            </Pressable>
+          </View>
+        </View>
+
+        {connections.length === 0 && messages.length === 0 && groups.length === 0 && (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
               <Ionicons name="people-outline" size={56} color={Colors.textTertiary} />
@@ -835,6 +1130,20 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textSecondary,
     textAlign: "center", paddingHorizontal: 40,
   },
+
+  friendStreak: {
+    backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  friendStreakText: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#D97706" },
+  groupMemberRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#f8f9fa", borderRadius: 10, padding: 10,
+  },
+  groupActionBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4, flex: 1,
+    backgroundColor: Colors.primaryBg, borderRadius: 10, paddingVertical: 8, justifyContent: "center",
+  },
+  groupActionText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: Colors.primary },
 
   toast: {
     position: "absolute", left: 40, right: 40,

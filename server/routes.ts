@@ -5,6 +5,14 @@ import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import { pool } from "./db";
 import { storage } from "./storage";
+import { sendPushNotification } from "./push";
+
+async function sendPushToUser(userId: string, title: string, body: string, data?: Record<string, any>): Promise<void> {
+  try {
+    const token = await storage.getUserPushToken(userId);
+    if (token) await sendPushNotification(token, title, body, data);
+  } catch {}
+}
 
 declare module "express-session" {
   interface SessionData {
@@ -120,6 +128,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ id: user.id, username: user.username, displayName: user.displayName, timezone: user.timezone });
     } catch (err: any) {
       res.status(500).json({ message: "Update failed" });
+    }
+  });
+
+  // Push token
+  app.post("/api/push-token", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ message: "Token is required" });
+      await storage.updatePushToken(req.session.userId!, token);
+      res.json({ message: "Token registered" });
+    } catch {
+      res.status(500).json({ message: "Failed to register token" });
+    }
+  });
+
+  app.delete("/api/push-token", requireAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.updatePushToken(req.session.userId!, null);
+      res.json({ message: "Token removed" });
+    } catch {
+      res.status(500).json({ message: "Failed to remove token" });
     }
   });
 
@@ -266,6 +295,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const conn = await storage.createConnection(myUserId, target.id, nickname);
+      const me = await storage.getUserById(myUserId);
+      sendPushToUser(target.id, "Friend Request", `${me?.displayName || "Someone"} wants to connect with you`, { type: "friend_request" });
       res.json(conn);
     } catch (err: any) {
       console.error("Connection request error:", err.message);
@@ -281,6 +312,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (conn.targetId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
       const status = accept ? "accepted" : "rejected";
       const updated = await storage.updateConnectionStatus(connectionId, status);
+      if (accept) {
+        const me = await storage.getUserById(req.session.userId!);
+        sendPushToUser(conn.requesterId, "Friend Request Accepted", `${me?.displayName || "Someone"} accepted your friend request`, { type: "friend_accepted" });
+      }
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to respond" });
@@ -349,13 +384,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
-      const summary = await storage.getUserSummary(targetUserId, date);
+      const [summary, streak] = await Promise.all([
+        storage.getUserSummary(targetUserId, date),
+        storage.getUserStreak(targetUserId),
+      ]);
       res.json({
         user: {
           id: summary.user.id,
           displayName: summary.user.displayName,
           timezone: summary.user.timezone,
         },
+        streak,
         completed: summary.completed,
         pending: summary.pending,
         missed: summary.missed,
@@ -386,6 +425,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cleanMessage = typeof message === "string" ? message.slice(0, 200) : null;
       const cleanMedName = typeof medicationName === "string" ? medicationName.slice(0, 100) : null;
       const nudge = await storage.createNudge(req.session.userId!, toUserId, type, cleanMedName, cleanMessage);
+      const me = await storage.getUserById(req.session.userId!);
+      const pushBody = cleanMessage || (type === "praise" ? "Great job! 👏" : "Time for your meds 💊");
+      sendPushToUser(toUserId, `${me?.displayName || "Friend"}`, pushBody, { type: "nudge" });
       res.json(nudge);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to send nudge" });
@@ -411,6 +453,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (nudge.toUserId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
     await storage.markNudgeRead(req.params.id);
     res.json({ message: "Marked as read" });
+  });
+
+  // Group routes
+  app.get("/api/groups/pending-count", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const invites = await storage.getPendingGroupInvites(req.session.userId!);
+      res.json({ count: invites.length });
+    } catch {
+      res.json({ count: 0 });
+    }
+  });
+
+  app.get("/api/groups/pending-invites", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const invites = await storage.getPendingGroupInvites(req.session.userId!);
+      res.json(invites.map(inv => ({
+        memberId: inv.id,
+        groupId: inv.group.id,
+        groupName: inv.group.name,
+        inviterName: inv.inviter.displayName,
+      })));
+    } catch {
+      res.json([]);
+    }
+  });
+
+  app.post("/api/groups", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) return res.status(400).json({ message: "Group name is required" });
+      const group = await storage.createGroup(name.trim().slice(0, 50), req.session.userId!);
+      res.json(group);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create group" });
+    }
+  });
+
+  app.get("/api/groups", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const groupsData = await storage.getGroupsForUser(req.session.userId!);
+      res.json(groupsData.map(g => ({
+        id: g.id,
+        name: g.name,
+        createdBy: g.createdBy,
+        createdAt: g.createdAt,
+        isAdmin: g.createdBy === req.session.userId,
+        members: g.members.filter(m => m.status === "accepted" || m.status === "pending").map(m => ({
+          id: m.id,
+          userId: m.userId,
+          displayName: m.user.displayName,
+          role: m.role,
+          status: m.status,
+        })),
+      })));
+    } catch {
+      res.status(500).json({ message: "Failed to load groups" });
+    }
+  });
+
+  app.put("/api/groups/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const group = await storage.getGroupById(req.params.id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.createdBy !== req.session.userId) return res.status(403).json({ message: "Only admin can rename" });
+      const updated = await storage.updateGroupName(req.params.id, req.body.name?.trim().slice(0, 50));
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update group" });
+    }
+  });
+
+  app.delete("/api/groups/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const group = await storage.getGroupById(req.params.id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.createdBy !== req.session.userId) return res.status(403).json({ message: "Only admin can delete" });
+      await storage.deleteGroup(req.params.id);
+      res.json({ message: "Group deleted" });
+    } catch {
+      res.status(500).json({ message: "Failed to delete group" });
+    }
+  });
+
+  app.post("/api/groups/:id/invite", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const group = await storage.getGroupById(req.params.id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.createdBy !== req.session.userId) return res.status(403).json({ message: "Only admin can invite" });
+
+      const { username } = req.body;
+      if (!username?.trim()) return res.status(400).json({ message: "Username is required" });
+      const target = await storage.getUserByUsername(username.trim());
+      if (!target) return res.status(404).json({ message: "User not found" });
+      if (target.id === req.session.userId) return res.status(400).json({ message: "Cannot invite yourself" });
+
+      const members = await storage.getGroupMembers(req.params.id);
+      const existing = members.find(m => m.userId === target.id);
+      if (existing && (existing.status === "accepted" || existing.status === "pending")) {
+        return res.status(409).json({ message: "User already in group or invited" });
+      }
+      if (existing) await storage.removeGroupMember(existing.id);
+
+      const member = await storage.addGroupMember(req.params.id, target.id, req.session.userId!);
+      const me = await storage.getUserById(req.session.userId!);
+      sendPushToUser(target.id, "Group Invitation", `${me?.displayName || "Someone"} invited you to "${group.name}"`, { type: "group_invite", groupId: group.id });
+      res.json(member);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to invite member" });
+    }
+  });
+
+  app.post("/api/groups/invites/respond", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { memberId, accept } = req.body;
+      const member = await storage.getGroupMemberById(memberId);
+      if (!member) return res.status(404).json({ message: "Invitation not found" });
+      if (member.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.updateGroupMemberStatus(memberId, accept ? "accepted" : "rejected");
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to respond to invitation" });
+    }
+  });
+
+  app.delete("/api/groups/:groupId/members/:memberId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const group = await storage.getGroupById(req.params.groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.createdBy !== req.session.userId) return res.status(403).json({ message: "Only admin can remove members" });
+      const member = await storage.getGroupMemberById(req.params.memberId);
+      if (!member) return res.status(404).json({ message: "Member not found" });
+      if (member.userId === req.session.userId) return res.status(400).json({ message: "Cannot remove yourself" });
+      await storage.removeGroupMember(req.params.memberId);
+      res.json({ message: "Member removed" });
+    } catch {
+      res.status(500).json({ message: "Failed to remove member" });
+    }
+  });
+
+  app.get("/api/groups/:id/dashboard", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const members = await storage.getGroupMembers(req.params.id);
+      const isMember = members.some(m => m.userId === req.session.userId && m.status === "accepted");
+      if (!isMember) return res.status(403).json({ message: "Not a member of this group" });
+
+      const group = await storage.getGroupById(req.params.id);
+      const date = new Date().toISOString().split("T")[0];
+      const accepted = members.filter(m => m.status === "accepted");
+
+      const memberData = await Promise.all(accepted.map(async (m) => {
+        const [summary, streak] = await Promise.all([
+          storage.getUserSummary(m.userId, date),
+          storage.getUserStreak(m.userId),
+        ]);
+        return {
+          userId: m.userId,
+          displayName: m.user.displayName,
+          role: m.role,
+          summary: {
+            completed: summary.completed,
+            pending: summary.pending,
+            missed: summary.missed,
+            total: summary.total,
+            streak,
+          },
+        };
+      }));
+
+      res.json({ group, members: memberData });
+    } catch {
+      res.status(500).json({ message: "Failed to load dashboard" });
+    }
+  });
+
+  app.post("/api/groups/:id/nudge", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const members = await storage.getGroupMembers(req.params.id);
+      const isMember = members.some(m => m.userId === req.session.userId && m.status === "accepted");
+      if (!isMember) return res.status(403).json({ message: "Not a member of this group" });
+
+      const group = await storage.getGroupById(req.params.id);
+      const date = new Date().toISOString().split("T")[0];
+      const me = await storage.getUserById(req.session.userId!);
+      const { message } = req.body;
+      let sent = 0;
+
+      for (const m of members.filter(m => m.status === "accepted" && m.userId !== req.session.userId)) {
+        const summary = await storage.getUserSummary(m.userId, date);
+        if (summary.completed < summary.total) {
+          const nudgeMsg = message || "Time for your meds! 💊";
+          await storage.createNudge(req.session.userId!, m.userId, "reminder", null, nudgeMsg);
+          sendPushToUser(m.userId, `${group?.name || "Group"}`, `${me?.displayName || "Someone"}: ${nudgeMsg}`, { type: "group_nudge" });
+          sent++;
+        }
+      }
+      res.json({ sent });
+    } catch {
+      res.status(500).json({ message: "Failed to send group nudge" });
+    }
   });
 
   const httpServer = createServer(app);

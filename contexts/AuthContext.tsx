@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { apiRequest, getApiUrl } from '@/lib/query-client';
 import { fetch } from 'expo/fetch';
+import { registerForPushNotificationsAsync } from '@/lib/notifications';
 
 interface AuthUser {
   id: string;
@@ -31,17 +32,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
+  const registerPushToken = useCallback(async () => {
+    try {
+      const token = await registerForPushNotificationsAsync();
+      if (token) {
+        await apiRequest('POST', '/api/push-token', { token }).catch(() => {});
+      }
+    } catch {}
+  }, []);
+
+  const deregisterPushToken = useCallback(async () => {
+    try {
+      await apiRequest('DELETE', '/api/push-token').catch(() => {});
+    } catch {}
+  }, []);
+
   const refreshPendingCount = useCallback(async () => {
     try {
       const baseUrl = getApiUrl();
-      const url = new URL('/api/connections/pending-count', baseUrl);
-      const res = await fetch(url.toString(), { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setPendingRequestCount(typeof data.count === 'number' ? data.count : 0);
-      }
-    } catch (err) {
-    }
+      const [connRes, groupRes] = await Promise.all([
+        fetch(new URL('/api/connections/pending-count', baseUrl).toString(), { credentials: 'include' }),
+        fetch(new URL('/api/groups/pending-count', baseUrl).toString(), { credentials: 'include' }),
+      ]);
+      let total = 0;
+      if (connRes.ok) { const d = await connRes.json(); total += (d.count || 0); }
+      if (groupRes.ok) { const d = await groupRes.json(); total += (d.count || 0); }
+      setPendingRequestCount(total);
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -62,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        registerPushToken();
       }
     } catch (err) {
     } finally {
@@ -73,18 +91,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiRequest('POST', '/api/auth/login', { username, password });
     const data = await res.json();
     setUser(data);
-  }, []);
+    registerPushToken();
+  }, [registerPushToken]);
 
   const register = useCallback(async (username: string, password: string, displayName: string, timezone?: string) => {
     const res = await apiRequest('POST', '/api/auth/register', { username, password, displayName, timezone });
     const data = await res.json();
     setUser(data);
-  }, []);
+    registerPushToken();
+  }, [registerPushToken]);
 
   const logout = useCallback(async () => {
+    await deregisterPushToken();
     await apiRequest('POST', '/api/auth/logout');
     setUser(null);
-  }, []);
+  }, [deregisterPushToken]);
 
   const updateProfile = useCallback(async (data: { displayName?: string; timezone?: string; username?: string }) => {
     const res = await apiRequest('PUT', '/api/auth/profile', data);
