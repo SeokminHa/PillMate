@@ -1,0 +1,163 @@
+# PillMate Tier 1 Features — Complete Implementation Guide
+
+Pull the latest from GitHub (`git pull origin main`). The commit adds **Groups, Streak Enhancement, and Push Notifications** across 10 files. Below is everything you need to know.
+
+---
+
+## 1. Database Migration
+
+Two new tables and one new column were added. Run `npm run db:push` (Drizzle Kit) to sync the schema.
+
+### New column on `users`:
+- `push_token TEXT` (nullable) — stores Expo push token
+
+### New table `groups`:
+| Column | Type | Notes |
+|--------|------|-------|
+| id | VARCHAR PK | UUID default |
+| name | TEXT NOT NULL | Group display name |
+| created_by | VARCHAR FK→users | Cascade delete |
+| created_at | TIMESTAMP | Default now |
+
+### New table `group_members`:
+| Column | Type | Notes |
+|--------|------|-------|
+| id | VARCHAR PK | UUID default |
+| group_id | VARCHAR FK→groups | Cascade delete |
+| user_id | VARCHAR FK→users | Cascade delete |
+| role | TEXT default "member" | "admin" or "member" |
+| status | TEXT default "pending" | "pending"/"accepted"/"rejected" |
+| invited_by | VARCHAR FK→users | Cascade delete |
+| created_at | TIMESTAMP | Default now |
+
+---
+
+## 2. New Dependency
+
+`expo-server-sdk: ^3.13.0` added to package.json. Run `npm install` after pulling.
+
+---
+
+## 3. New File: `server/push.ts`
+
+Expo push notification helper using `expo-server-sdk`. Exports `sendPushNotification(pushToken, title, body, data?)`. Validates token with `Expo.isExpoPushToken()` before sending.
+
+---
+
+## 4. Backend Changes
+
+### `server/storage.ts` — 13 new methods added to IStorage + DatabaseStorage:
+
+**Push token:**
+- `updatePushToken(userId, token)` — save Expo push token
+- `getUserPushToken(userId)` — retrieve token
+
+**Streak:**
+- `getUserStreak(userId)` — counts consecutive 100%-completion days backward from today, skipping today if incomplete
+
+**Groups (10 methods):**
+- `createGroup(name, createdBy)` — creates group + auto-adds creator as admin/accepted
+- `getGroupById(id)`, `getGroupsForUser(userId)`, `deleteGroup(id)`, `updateGroupName(id, name)`
+- `addGroupMember(groupId, userId, invitedBy, role?)`, `updateGroupMemberStatus(id, status)`, `removeGroupMember(id)`
+- `getGroupMemberById(id)`, `getGroupMembers(groupId)` — includes user join
+- `getPendingGroupInvites(userId)` — includes group + inviter join
+
+### `server/routes.ts` — New API routes:
+
+**Push token:**
+- `POST /api/push-token` — register `{token}`, requires auth
+- `DELETE /api/push-token` — deregister, requires auth
+
+**Push sends wired into existing routes:**
+- `POST /api/connections/request` → pushes "Friend Request" to target
+- `POST /api/connections/respond` (accept) → pushes "Accepted" to requester
+- `POST /api/nudges` → pushes nudge message to recipient
+
+**Summary enhancement:**
+- `GET /api/summary/:userId` now includes `streak` field (fetched in parallel with Promise.all)
+
+**Group routes (12 endpoints):**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/groups/pending-count` | Count pending group invites |
+| GET | `/api/groups/pending-invites` | List pending invites with group name + inviter |
+| POST | `/api/groups` | Create group `{name}` |
+| GET | `/api/groups` | List user's groups with members |
+| PUT | `/api/groups/:id` | Rename group (admin only) |
+| DELETE | `/api/groups/:id` | Delete group (admin only, cascade) |
+| POST | `/api/groups/:id/invite` | Invite user by username `{username}` (admin) |
+| POST | `/api/groups/invites/respond` | Accept/decline `{memberId, accept}` |
+| DELETE | `/api/groups/:groupId/members/:memberId` | Remove member (admin only) |
+| GET | `/api/groups/:id/dashboard` | All accepted members' summary + streak |
+| POST | `/api/groups/:id/nudge` | Nudge all incomplete members with push |
+
+---
+
+## 5. Frontend Changes
+
+### `lib/notifications.ts`
+- Added `registerForPushNotificationsAsync()` — gets Expo push token using `expo-constants` project ID. Returns token string or null.
+
+### `contexts/AuthContext.tsx`
+- Added `registerPushToken()` — calls `registerForPushNotificationsAsync()` then `POST /api/push-token`
+- Added `deregisterPushToken()` — calls `DELETE /api/push-token`
+- `login()` and `register()` now call `registerPushToken()` after success
+- `logout()` now calls `deregisterPushToken()` before logout
+- `refreshPendingCount()` now fetches BOTH `/api/connections/pending-count` AND `/api/groups/pending-count` and sums them for the tab badge
+
+### `contexts/LanguageContext.tsx`
+26 new translation keys added to both `ko` and `en`:
+
+**Groups:** `createGroup`, `groupName`, `groupNamePlaceholder`, `myGroups`, `noGroupsYet`, `noGroupsDesc`, `inviteToGroup`, `groupInvites`, `groupInvitedYou`, `groupNudgeAll`, `groupNudgeSent`, `deleteGroup`, `deleteGroupConfirm`, `removeMember`, `admin`, `member`
+
+**Streak:** `streakDays`, `streakFire`, `streakMilestone7`, `streakMilestone14`, `streakMilestone30`, `streakMilestone60`, `streakMilestone100`, `streakMilestoneTitle`
+
+### `app/(tabs)/index.tsx` — Today Screen
+- Fetches streak from `/api/summary/:userId` on mount
+- Shows flame badge in header when streak > 0: `🔥 7일 연속`
+- After each dose log, re-fetches streak (500ms delay) and checks milestones
+- Milestone triggers `Alert.alert()` with congratulatory message at 7/14/30/60/100 days
+- New styles: `streakBadge`, `streakIcon`, `streakText`
+
+### `app/(tabs)/caregiver.tsx` — Together Screen
+- `UserSummary` interface now includes `streak?: number`
+- New interfaces: `GroupData`, `GroupDashboard`
+- Friend cards show inline streak badge next to name
+- New state variables: `groups`, `groupDashboards`, `groupPendingInvites`, `newGroupName`, `creatingGroup`, `inviteGroupId`, `inviteUsername`
+- `loadAll()` also fetches `/api/groups`, dashboard for each group, and `/api/groups/pending-invites`
+- 6 new handlers: `handleCreateGroup`, `handleDeleteGroup`, `handleGroupInvite`, `handleGroupInviteRespond`, `handleGroupNudge`, `handleRemoveGroupMember`
+
+**New UI sections in ScrollView:**
+1. **Pending Group Invites** — group name + inviter, accept/decline buttons
+2. **My Groups** — expandable cards with member progress bars, streak badges, invite/nudge/remove controls
+3. **Create Group** — inline form with name input + create button
+
+---
+
+## 6. How It All Connects
+
+1. User registers/logs in → push token registered on server
+2. User creates a group → auto-becomes admin
+3. Admin invites friend by username → friend gets push notification + pending invite in Together tab
+4. Friend accepts → appears in group dashboard with progress bar and streak
+5. Admin taps "Nudge All" → incomplete members get push notifications
+6. Every dose logged → streak re-calculated, milestone alerts at 7/14/30/60/100 days
+7. Tab badge shows combined friend requests + group invites count
+
+---
+
+## 7. Testing Checklist
+
+- [ ] `npm run db:push` succeeds (new tables created)
+- [ ] `npm install` picks up expo-server-sdk
+- [ ] Create a group → appears in "My Groups"
+- [ ] Invite another user → they see pending invite
+- [ ] Accept invite → member appears in group dashboard with progress
+- [ ] Nudge All → sends to incomplete members
+- [ ] Delete group → removes from both users
+- [ ] Streak badge appears on Today screen when streak > 0
+- [ ] Friend cards show streak badges
+- [ ] Log all doses for a day → streak increments
+- [ ] Push notifications arrive on friend request/nudge/group invite (requires physical device)
+- [ ] Tab badge shows combined pending count
