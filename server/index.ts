@@ -169,8 +169,22 @@ function configureExpoAndLanding(app: express.Application) {
   );
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
+  const webBuildDir = path.resolve(process.cwd(), "dist");
+  const hasWebBuild = fs.existsSync(path.join(webBuildDir, "index.html"));
 
   log("Serving static Expo files with dynamic manifest routing");
+  if (hasWebBuild) {
+    log("Expo web build detected at dist/ — serving PWA");
+  }
+
+  app.use("/public", express.static(path.resolve(process.cwd(), "public")));
+  app.get("/manifest.json", (_req, res) => {
+    res.sendFile(path.resolve(process.cwd(), "public", "manifest.json"));
+  });
+  app.get("/sw.js", (_req, res) => {
+    res.setHeader("Service-Worker-Allowed", "/");
+    res.sendFile(path.resolve(process.cwd(), "public", "sw.js"));
+  });
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
@@ -187,6 +201,9 @@ function configureExpoAndLanding(app: express.Application) {
     }
 
     if (req.path === "/") {
+      if (hasWebBuild) {
+        return res.sendFile(path.join(webBuildDir, "index.html"));
+      }
       return serveLandingPage({
         req,
         res,
@@ -199,6 +216,9 @@ function configureExpoAndLanding(app: express.Application) {
   });
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  if (hasWebBuild) {
+    app.use(express.static(webBuildDir));
+  }
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
@@ -233,6 +253,14 @@ function setupErrorHandler(app: express.Application) {
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
+
+  const webBuildIndex = path.resolve(process.cwd(), "dist", "index.html");
+  if (fs.existsSync(webBuildIndex)) {
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      res.sendFile(webBuildIndex);
+    });
+  }
 
   setupErrorHandler(app);
 
