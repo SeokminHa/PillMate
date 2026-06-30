@@ -517,7 +517,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const group = await storage.getGroupById(req.params.id);
       if (!group) return res.status(404).json({ message: "Group not found" });
       if (group.createdBy !== req.session.userId) return res.status(403).json({ message: "Only admin can rename" });
-      const updated = await storage.updateGroupName(req.params.id, req.body.name?.trim().slice(0, 50));
+      const newName = req.body.name?.trim();
+      if (!newName) return res.status(400).json({ message: "Group name is required" });
+      const updated = await storage.updateGroupName(req.params.id, newName.slice(0, 50));
       res.json(updated);
     } catch {
       res.status(500).json({ message: "Failed to update group" });

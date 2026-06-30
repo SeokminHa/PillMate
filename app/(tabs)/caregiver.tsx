@@ -295,7 +295,7 @@ export default function CaregiverScreen() {
     try {
       await apiRequest("POST", "/api/groups", { name });
       setNewGroupName("");
-      showToast(t("createGroup" as any));
+      showToast(t("confirm"));
       loadAll();
     } catch {
       showToast(t("error"));
